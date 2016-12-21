@@ -53,6 +53,7 @@ contract NewCCCoin is usingOraclize {
 	mapping (string => address[50]) all_votes_first;                // {item_id:[voter, voter, voter]}
 	mapping (string => address[50]) all_votes_last;                  // {item_id:[voter, voter, voter]}
 
+	global_rewards_today = 0;
 	
     }
     
@@ -143,18 +144,21 @@ contract NewCCCoin is usingOraclize {
 	    all_votes_power[item_id] += lock_balances[msg.sender];
 	    pending_votes_power[item_id] += lock_balances[msg.sender];
 	    pending_global_power += lock_balances[msg.sender];
+	    median_daily_curation_rewards = 100 * 10;
 	    all_votes_num[item_id] += 1;
 	    global_votes_num += 1;
 	    
 	    // Calcuate total rewards for this item:
 
-	    this_hour = int(now / 60 / 60);
+	    this_hour = Math.floor(now / 60 / 60);
 
 	    one_day = 60 * 60 * 24;
 	    
-	    end_of_day = int(now + one_day)
+	    end_of_day = Math.floor(now + one_day)
+
+	    // TODO, about to swap for another:
 	    
-	    this_reward = (all_power_pending[item_id] / global_pending_power) / ((end_of_day - now) / one_day) / (target_daily_curation_rewards / median_daily_curation_rewards);
+	    this_reward =  ((end_of_day - now) / one_day) / (all_power_pending[item_id] / global_pending_power) / (global_rewards_today / median_daily_curation_rewards);
 	    
 	    // Distribute rewards, every: max(50 votes, 10 minutes):
 	    
@@ -180,7 +184,9 @@ contract NewCCCoin is usingOraclize {
 		}
 		
 		last_rewards_time[item_id] = now;
-	    
+
+		global_rewards_today += this_reward;
+
 	    }
 	    
 
