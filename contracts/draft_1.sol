@@ -1,9 +1,10 @@
+pragma solidity ^0.4.0;
 contract owned { 
     address owner;
 
     modifier onlyOwner {
         if (msg.sender != owner) throw;
-        _
+        _;
     }
     function owned() { 
         owner = msg.sender; 
@@ -15,27 +16,36 @@ contract mortal is owned {
         if (msg.sender == owner) selfdestruct(owner);
     }
 }
-   contract TokFactory is owned{ 
-
-    // modifier onlyOwner {
-    //     if (msg.sender != owner) throw;
-    //     _
-    // }
+contract TokFactory is owned, mortal{ 
 
     mapping(address => address[]) public created;
     mapping(address => bool) public isToken; //verify without having to do a bytecode check.
     bytes public tokByteCode;
+    address public verifiedToken;
+    event tokenCreated(uint256 amount, address tokenAddress, address owner); 
 
     function () { 
       throw; 
     }
 
+    modifier noEther { 
+      if (msg.value > 0) { throw; }
+      _; 
+    }
+
     function TokFactory() {
       //upon creation of the factory, deploy a Token (parameters are meaningless) and store the bytecode provably.
       owner = msg.sender;
-      address verifiedToken = createTok(100000, "Tok", 3, "Tok");
-      tokByteCode = codeAt(verifiedToken);
     }
+
+    function getOwner() constant returns (address) { 
+      return owner; 
+    }
+
+    function getTokenAddress() constant returns (address) { 
+      // if (verifiedToken == 0x0) { throw; }
+      return verifiedToken;
+    } 
 
     //verifies if a contract that has been deployed is a validToken.
     //NOTE: This is a very expensive function, and should only be used in an eth_call. ~800k gas
@@ -73,17 +83,18 @@ contract mortal is owned {
       }
     }
 
-    function createTok(uint256 _initialAmount, string _name, uint8 _decimals, string _symbol) internal returns (address) {
-        Tok tok = (new Tok(_initialAmount, _name, _decimals, _symbol));
+    function createTok(uint256 _initialAmount, string _name, uint8 _decimals, string _symbol) onlyOwner  returns (address) {
+        Tok tok = new Tok(_initialAmount, _name, _decimals, _symbol);
         created[msg.sender].push(address(tok));
         isToken[address(tok)] = true;
-        tok.transfer(msg.sender, _initialAmount); //the factory will own the created tokens. You must transfer them.
+        // tok.transfer(owner, _initialAmount); //the creator will own the created tokens. You must transfer them.
+        verifiedToken = address(tok); 
+        tokByteCode = codeAt(verifiedToken);
+        tokenCreated(_initialAmount, verifiedToken, msg.sender);
         return address(tok);
     }
 
   }
-
-
 contract StandardToken {
 
     event Transfer(address sender, address to, uint256 amount);
@@ -91,10 +102,28 @@ contract StandardToken {
     /*
      *  Data structures
      */
-    mapping (address => uint256) balances;
+    struct Lock {
+      uint256 amount; 
+      uint256 unlockDate;
+    }
+
+    struct Post {
+      bytes32 title;
+      bytes32 content; 
+      uint256 creationDate; 
+      uint8 voteCount; 
+      address[] voters;
+      mapping (address => uint8) voteResult;     // -1 = downvote , 0 = no vote,  1 = upvote 
+    }
+
+    mapping (address => uint256) public balances;
     mapping (address => mapping (address => uint256)) allowed;
     uint256 public totalSupply;
+    mapping (address => Lock[]) public lockedTokens;
+    mapping (address => Post[]) public posts; 
+    address[] users; 
 
+    
     /*
      *  Read and write storage functions
      */
@@ -156,10 +185,8 @@ contract StandardToken {
     }
 
 }
+contract Tok is StandardToken, owned, mortal{ 
 
-contract Tok is StandardToken, owned{ 
-
-    address owner;
     address tokFactory; 
 
     string name; 
@@ -168,11 +195,12 @@ contract Tok is StandardToken, owned{
 
     modifier noEther { 
       if (msg.value > 0) { throw; }
+      _; 
     }
 
     modifier controlled { 
         if (msg.sender != tokFactory) throw; 
-        _
+        _;
     }
 
 
@@ -186,24 +214,34 @@ contract Tok is StandardToken, owned{
         string _tokenName,
         uint8 _decimalUnits,
         string _tokenSymbol
-        ) {
+        ) noEther{
         tokFactory = msg.sender;
-        balances[msg.sender] = _initialAmount;               // Give the creator all initial tokens
+        balances[msg.sender] = _initialAmount;               // Give the TokFactory all initial tokens
         totalSupply = _initialAmount;                        // Update total supply
         name = _tokenName;                                   // Set the name for display purposes
         decimals = _decimalUnits;                            // Amount of decimals for display purposes
         symbol = _tokenSymbol;                               // Set the symbol for display purposes
     }
 
-    function lockTokens(address _tokenHolder, uint256 _amount) controlled { 
+    function lockTokens(address _tokenHolder, uint256 _amount) noEther controlled returns (bool) { 
       if (balances[_tokenHolder] < _amount) { throw; }
+      Lock[] lock = lockedTokens[_tokenHolder];
+      uint256 unlockTime = block.timestamp + 4 weeks;
+      balances[_tokenHolder] -= _amount;
+      lock.push(Lock({amount: _amount, unlockDate: unlockTime}));
+      return true; 
     } 
 
-    function mintToken(address target, uint256 mintedAmount) controlled {
-        balances[target] += mintedAmount;
-        totalSupply += mintedAmount;
-        Transfer(owner, target, mintedAmount);
+    function mintToken(address _target, uint256 _mintedAmount) controlled {
+        balances[_target] += _mintedAmount;
+        totalSupply += _mintedAmount;
+        Transfer(owner, _target, _mintedAmount);
 }
+    function calculateLockPayout(uint256 _amount) internal constant controlled { 
+      for (uint8 i = 0; i < users.length; i++) { 
+        address user = users[i]; 
+      }
+    }
 
 
 }
