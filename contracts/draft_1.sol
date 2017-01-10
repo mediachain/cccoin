@@ -22,7 +22,8 @@ contract TokFactory is owned, mortal{
     mapping(address => bool) public isToken; //verify without having to do a bytecode check.
     bytes public tokByteCode;
     address public verifiedToken;
-    event tokenCreated(uint256 amount, address tokenAddress, address owner); 
+    event tokenCreated(uint256 amount, address tokenAddress, address owner);
+    Tok tok;
 
     function () { 
       throw; 
@@ -31,6 +32,11 @@ contract TokFactory is owned, mortal{
     modifier noEther { 
       if (msg.value > 0) { throw; }
       _; 
+    }
+
+    modifier needTok { 
+      if (address(tok) == 0x0) { throw; }
+      _;
     }
 
     function TokFactory() {
@@ -84,7 +90,7 @@ contract TokFactory is owned, mortal{
     }
 
     function createTok(uint256 _initialAmount, string _name, uint8 _decimals, string _symbol) onlyOwner  returns (address) {
-        Tok tok = new Tok(_initialAmount, _name, _decimals, _symbol);
+        tok = new Tok(_initialAmount, _name, _decimals, _symbol);
         created[msg.sender].push(address(tok));
         isToken[address(tok)] = true;
         // tok.transfer(owner, _initialAmount); //the creator will own the created tokens. You must transfer them.
@@ -93,35 +99,53 @@ contract TokFactory is owned, mortal{
         tokenCreated(_initialAmount, verifiedToken, msg.sender);
         return address(tok);
     }
-
+    function rewardToken(address _buyer, uint256 _amount)  onlyOwner returns (bool) {
+      return tok.transfer(_buyer, _amount); 
   }
-contract StandardToken {
+}
+contract StandardToken is owned, mortal{
 
     event Transfer(address sender, address to, uint256 amount);
     event Approval(address sender, address spender, uint256 value);
     /*
      *  Data structures
      */
+    struct User {
+      bool initialized; 
+      address userAddress; 
+      bytes32 userName;
+      uint256 registerDate;
+      uint8 blockVoteCount;    // number of votes this block
+      uint256 currentBlock; 
+      uint8 totalVotes; 
+      mapping (uint8 => Post) votedContent;  // mapping of each vote to post 
+    }
+
     struct Lock {
       uint256 amount; 
       uint256 unlockDate;
     }
 
     struct Post {
+      bool initialized; 
+      address creator; 
       bytes32 title;
       bytes32 content; 
       uint256 creationDate; 
-      uint8 voteCount; 
+      uint8 voteCount;     // total + or - 
       address[] voters;
       mapping (address => uint8) voteResult;     // -1 = downvote , 0 = no vote,  1 = upvote 
     }
+
 
     mapping (address => uint256) public balances;
     mapping (address => mapping (address => uint256)) allowed;
     uint256 public totalSupply;
     mapping (address => Lock[]) public lockedTokens;
-    mapping (address => Post[]) public posts; 
-    address[] users; 
+    mapping (address => Post[]) public posts;
+    uint8 public numUsers;
+    mapping (address => User) public users;
+    address[] userAddress; 
 
     
     /*
@@ -185,7 +209,7 @@ contract StandardToken {
     }
 
 }
-contract Tok is StandardToken, owned, mortal{ 
+contract Tok is StandardToken{ 
 
     address tokFactory; 
 
@@ -223,11 +247,28 @@ contract Tok is StandardToken, owned, mortal{
         symbol = _tokenSymbol;                               // Set the symbol for display purposes
     }
 
-    function lockTokens(address _tokenHolder, uint256 _amount) noEther controlled returns (bool) { 
-      if (balances[_tokenHolder] < _amount) { throw; }
-      Lock[] lock = lockedTokens[_tokenHolder];
+    function getUserAddress(address _user) noEther returns (address) { 
+      return users[_user].userAddress; 
+    }
+    function getUserName(address _user) noEther returns (bytes32) { 
+      return users[_user].userName; 
+    }
+
+    function register(bytes32 _username) noEther returns (bool success) { 
+      User newUser = users[msg.sender];
+      newUser.userName = _username;
+      newUser.userAddress = msg.sender;
+      newUser.registerDate = block.timestamp;
+      return true; 
+
+    }
+
+    function lockTokens( uint256 _amount) noEther  returns (bool) { 
+      if (balances[msg.sender] < _amount) { return false; }
+      Lock[] lock = lockedTokens[msg.sender];
       uint256 unlockTime = block.timestamp + 4 weeks;
-      balances[_tokenHolder] -= _amount;
+      balances[msg.sender] -= _amount;
+      totalSupply -= _amount;
       lock.push(Lock({amount: _amount, unlockDate: unlockTime}));
       return true; 
     } 
@@ -237,9 +278,56 @@ contract Tok is StandardToken, owned, mortal{
         totalSupply += _mintedAmount;
         Transfer(owner, _target, _mintedAmount);
 }
+
+    // function numRecentVotes(address voter) internal constant returns (uint256) {
+    //   User user = users[voter]; 
+    //   uint8 recentVotes = 0; 
+    //   for (uint8 i = 0; i < user.voteCount; i++) { 
+    //     if (user.blockVoteCount ) { 
+    //       recentVotes++;
+    //     }
+    //   }
+    //   return recentVotes; 
+    // }
+
+    
+    function  post(bytes32 _title, bytes32 _content) noEther{
+      Post[] posts = posts[msg.sender];
+      posts.push(Post({creator: msg.sender, title: _title, content: _content, creationDate: block.timestamp, voteCount: 0}));
+    }
+
+    function vote(uint8 _postID, address _creator) noEther {
+           User voter = users[msg.sender];
+           Post postVotedOn = posts[_creator][_postID];
+           if (voter.currentBlock == block.number) {
+             // uint256 requiredLock =  (1 * numVotes) ** 3) + 100);  
+             // uint256 lockBalance = lockBalance(msg.sender);
+             // if (lockBalance < requiredLock) { throw;     }  
+           }
+           else { 
+            voter.blockVoteCount = 0; 
+            voter.currentBlock = block.number;
+            uint256 totalLock = lockBalance(msg.sender);
+            if (totalLock > 100) { 
+
+            } 
+           }
+    }
+
+    function lockBalance(address lockAccount)  constant returns (uint256) { 
+      Lock[] lockedList = lockedTokens[lockAccount];
+      uint256 total = 0;  
+      for (uint8 i = 0; i < lockedList.length; i++) { 
+        total += lockedList[i].amount; 
+        }
+      return total;
+    }
     function calculateLockPayout(uint256 _amount) internal constant controlled { 
-      for (uint8 i = 0; i < users.length; i++) { 
-        address user = users[i]; 
+      for (uint8 i = 0; i < numUsers; i++) { 
+         address temp = userAddress[i]; 
+         User user = users[temp]; 
+         uint256 userLockBalance = lockBalance(temp);
+
       }
     }
 
