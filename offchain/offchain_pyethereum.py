@@ -18,6 +18,13 @@ pip install ethereum-serpent
 pip install py-solc
 """
 
+"""
+event foo(x:string:indexed, y:bytes:indexed, z:str:indexed)
+def moo():
+    log(type=foo, text("bob"), text("cow"), text("dog"))
+"""
+
+
 def doit():
     from ethereum import tester as t
     import textwrap
@@ -45,7 +52,12 @@ def doit():
 
     st.block.log_listeners.append(lambda x: out.append(ccont._translator.listen(x)))
 
-    ccont.doVote(1234, 1)
+    vv = {'item_id':2345, 'vote':0}
+
+    print ('PUT', vv)
+    
+    #ccont.doVote(*vv) ## BROKEN!!?
+    ccont.doVote(2345, 0)
 
     print ('GOT', out)
 
