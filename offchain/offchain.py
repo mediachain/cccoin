@@ -416,7 +416,8 @@ class ContractWrapper:
         Simple contract wrapper, assists with deploying contract, sending transactions, and tracking event logs.
         
         Args:
-          - `events_callback` will be called upon each state transition, according to `confirm_states`, until `final_confirm_state`.
+          - `events_callback` will be called upon each state transition, according to `confirm_states`, 
+             until `final_confirm_state`.
           - `contract_address` contract address, from previous `deploy()` call.
         """
         
@@ -475,8 +476,8 @@ class ContractWrapper:
         
         if block:
             receipt = self.c.eth_getTransactionReceipt(tx) ## blocks to ensure transaction is mined
-            if receipt['blockNumber']:
-                self.latest_block_number = max(int(receipt['blockNumber'],16), self.latest_block_number)
+            #if receipt['blockNumber']:
+            #    self.latest_block_number = max(int(receipt['blockNumber'],16), self.latest_block_number)
         else:
             self.pending_transactions[tx] = callback
         
@@ -494,7 +495,7 @@ class ContractWrapper:
             else:
                 block_number = False
 
-            self.latest_block_number = max(block_number, self.latest_block_number)
+            #self.latest_block_number = max(block_number, self.latest_block_number)
             
             if (block_number is not False) and (block_number + self.confirm_states['CONFIRMED'] >= self.latest_block_number):
                 if callback is not False:
@@ -537,7 +538,7 @@ class ContractWrapper:
             else:
                 block_number = False
             
-            self.latest_block_number = max(block_number, self.latest_block_number)
+            #self.latest_block_number = max(block_number, self.latest_block_number)
             
             if (block_number is not False) and (block_number + self.confirm_states['CONFIRMED'] >= self.latest_block_number):
                 if self.events_callback is not False:
@@ -580,9 +581,28 @@ class CCCoinAPI:
     def __init__(self,):
 
         self.cw = ContractWrapper(events_callback = self.event_logs_callback)
-
+        
         self.latest_block_number = -1
         self.is_caught_up = False
+
+        ## Rewards:
+        
+        self.REWARDS_CURATION = 90.0   ## TOK minted per block for curation rewards.
+        self.REWARDS_POSTING = 10.0    ## TOK minted per block for posting rewards.
+        
+        self.REWARDS_FREQUENCY = 140   ## 140 blocks = 7 hours
+        
+        ## Maximum number of blocks allowed between submitting a blind vote and unblinding:
+        
+        self.MAX_UNBLIND_DELAY = 20
+
+        
+        
+        ## User tracking:
+
+        self.user_info = {}
+        self.user_tok_balances = {}
+        self.user_lok_balances = {}
         
         ## Key store for users on this node:
         
@@ -590,7 +610,10 @@ class CCCoinAPI:
         
         ## Caches:
         
-        self.items_by_hotness = []
+        self.hot_items_cache = []     ## [item_id,...]
+        self.recent_voting_hist = []  ## {hour:{item_id:num_votes}}
+        
+        self.cur_unblind_block_num = -1
         
         ## Items and Votes DB, split into pending and confirmed (>= confirm_wait_blocks).
         ## TODO Pending are ignored if not confirmed within a certain amount of time.
@@ -604,7 +627,19 @@ class CCCoinAPI:
         
         self.my_blind_votes =  {}          ## {vote_hash: vote_string}
         self.my_votes_unblinded = {}       ## {vote_hash: block_number}
-    
+
+        ##
+
+        self.poster_ids = {}               ## {item_id:poster_id}
+        
+        self.new_rewards = {}              ## {voter_id:tok}
+
+        self.total_lock_at_block = {}      ## {block_num:tok}
+        self.unblinded_votes_at_block = {} ## {block_num:{sig:(voter_id, item_id, voter_lock)}}
+
+        self.old_voters_for_item = {}      ## {item_id:set(voters)}
+        self.new_voters_for_item = {}      ## {item_id:set(voters)}
+        
     def event_logs_callback(self,
                             msg,
                             receipt,
@@ -622,34 +657,143 @@ class CCCoinAPI:
             return
         
         if confirm_level == 'CONFIRMED':
+
+            block_number = int(msg['blockNumber'], 16)
+            
+            ## REWARDS:
+
+            if is_caught_up and (block_number > self.latest_block_number):
+
+                ## GOT NEW BLOCK:
+
+                self.latest_block_number = max(block_number, self.latest_block_number)
+                
+                ## Mint TOK rewards for the old block, upon each block update:
+                
+                doing_block_id = block_number - (self.MAX_UNBLIND_DELAY + 1)
+                
+                total_lock_this_round = self.total_lock_at_block.get(doing_block_id, 0.0)
+                                
+                for sig, (voter_id, item_id, voter_lock) in self.unblinded_votes_at_block.get(doing_block_id, {}).iteritems():
+
+                    item_poster_id = self.poster_ids[item_id]
+                    
+                    if item_id not in self.new_voters_for_item:
+                        self.new_voters_for_item[item_id] = set()
+                    self.new_voters_for_item[item_id].add(voter_id)
+                    
+                    reward_per_voter = self.REWARDS_CURATION * (voter_lock / total_lock_this_item) * (total_lock_this_item / total_lock_this_round) / len(self.old_voters_for_item[item_id])
+                    
+                    reward_poster = self.REWARDS_POSTING * (total_lock_this_item / total_lock_this_round)
+                    
+                    for old_voter_id in self.old_voters_for_item[item_id]:
+                        
+                        self.new_rewards[old_voter_id] = self.new_rewards.get(old_voter_id, 0.0) + reward_per_voter
+                    
+                    self.new_rewards[item_poster_id] = self.new_rewards.get(item_poster_id, 0.0) + reward_poster
+                
+                ## Occasionally distribute rewards:
+                
+                if (block_number % self.REWARDS_FREQUENCY) == 0:
+                    
+                    rr = dumps_compact({'t':'mint', 'rewards':self.new_rewards})
+                
+                    tx = self.cw.send_transaction('addLog(bytes)',
+                                                  [rr],
+                                                  )
+                    
+                    xx = self.new_rewards.items()
+                    
+                    tx = self.cw.send_transaction('mintTok(bytes)',
+                                                  [[x for x,y in xx],
+                                                   [y for x,y in xx],
+                                                  ],
+                                                  )
+                    self.new_rewards.clear()
+                
+                ## Cleanup:
+                
+                if doing_block_id in self.unblinded_votes_at_block:
+                    del self.unblinded_votes_at_block[doing_block_id]
+
+                for item_id,voters in self.new_voters_for_item.iteritems():
+                    
+                    if item_id not in self.old_voters_for_item:
+                        self.old_voters_for_item[item_id] = set()
+                    
+                    self.old_voters_for_item[item_id].update(voters)
+                    
+                self.new_voters_for_item.clear()
+                
+            ## HANDLE LOG EVENTS:
+            
             if hh['t'] == 'vote_blinded':
                 ## Got blinded vote, possibly from another node, or previous instance of self:
-
+                
                 if hh['sig'] in self.my_votes:
                     ## blind vote submitted from my node:
-                    self.my_votes_confirmed[hh['sig']] = msg['blockNumber']
-                    del self.my_votes_pending_confirm[hh['sig']]
+                    self.votes_confirmed[hh['sig']] = msg['blockNumber']
+                    del self.votes_pending_confirm[hh['sig']]
+                    
+                    self.votes_blind_block[(hh['user_id'], hh['item_id'])] = (hh['sig'], msg['blockNumber']) ## latest vote
+                    
                 else:
                     ## blind vote submitted from another node:
                     pass
 
             elif hh['t'] == 'vote_unblinded':
                 ## Got unblinded vote, possibly from another node, or previous instance of self:
+                
+                ## check latest blinded vote for this user & item:
+                old_sig, old_block_number = self.votes_blind_block[(hh['user_id'], hh['item_id'])]
 
-                if hh['sig'] in self.my_votes_confirmed:                    
-                    pass
+                ## ignore outdated votes:
+                
+                if hh['sig'] == old_sig:
+                    
+                    votes = loads_compact(hh['orig'])
 
-            elif hh['t'] == 'vote_unblinded':
+                    orig_block_num = self.lookup_orig_blocknum
+
+                    if orig_block_num > self.cur_unblind_block_num:
+                        ## clear out previous
+                        self.recent_voting_hist[time_bucket] = {}
+                        self.cur_unblind_block_num = orig_block_num
+                    
+                    time_bucket = orig_block_num % 100 ## 
+                    
+                    if time_bucket not in self.recent_voting_hist:
+                        self.recent_voting_hist[time_bucket] = {}
+                    
+                    for vote in votes:
+                        assert vote['dir'] in [1], vote['dir'] ## only positive votes for v1
+                        
+                        self.total_lock_at_block[block_num] += self.user_lok_balances[hh['user_id']]
+
+                        if block_num not in self.unblinded_votes_at_block:
+                            self.unblinded_votes_at_block[block_num] = {}
+                        
+                        if hh['sig'] not in self.unblinded_votes_at_block[block_num]:
+                            self.unblinded_votes_at_block[block_num][hh['sig']] = []
+                        
+                        self.unblinded_votes_at_block[block_num][hh['sig']].append((hh['user_id'],
+                                                                                    vote['item_id'],
+                                                                                    self.user_lok_balances[hh['user_id']],
+                                                                                    ))
+                        
+                        self.recent_voting_hist[time_bucket][vote['item_id']] += 1 #vote['dir']
+                    
+            elif hh['t'] == 'post':
+                ## got post_item:
                 pass
-
-
-                ## Unblind votes that need to be unblinded:
+            
+            elif hh['t'] == 'lock_tok':
+                ## request to lockup tok
+                pass
             
             for sig, block_number in self.my_votes_confirmed.iteritems():
                 pass
-            
-            
-    
+        
     def deploy_contract(self,):
         """
         Create new instance of dApp on blockchain.
@@ -695,7 +839,7 @@ class CCCoinAPI:
         Args:
         
         `votes` is a list of dicts. "direction" is 1 or 0:
-            [{'i':item_id,'d':direction,},...]
+            [{'item_id':item_id,'dir':direction,},...]
         
         `nonce` prevents out-of-order submission of votes & double sending of votes.
         
@@ -704,8 +848,10 @@ class CCCoinAPI:
           - Private key is passed.
         """
         
-        h = {'u':user_id,
-             'v':votes,
+        h = {'user':user_id,
+             'votes':votes,
+             'block':self.latest_block_number, ## if not accepted by miners fast enough, vote is cancelled.
+             'time':int(time()),               ## utc time, for debugging.
              }
         
         vv = dumps_compact(h)
@@ -720,7 +866,7 @@ class CCCoinAPI:
         
         self.my_blind_votes[vs] = vv
 
-        rr = dumps_compact({'t':'vote_blinded', 'sig': vs})
+        rr = dumps_compact({'t':'vote_blinded', 'sig': vs, 'user_id':user_id})
         
         tx = self.cw.send_transaction('addLog(bytes)',
                                       [rr],
@@ -758,7 +904,10 @@ class CCCoinAPI:
         """
         tx = self.cw.send_transaction('distributeRewards(bytes)', [rr])
     
-    def get_hot_items(self,):
+    def get_hot_items(self,
+                      offset = 0,
+                      increment = 50,
+                      ):
         pass
 
 
@@ -833,11 +982,6 @@ def trend_detection(input_gen,
             if input_is_absolutes:
                 
                 nn = (value - the_prev[item_id]) / float(c - the_prev_step[item_id])
-                                
-                if item_id == 'a':
-                    print 'c:',c,'value:',value,'the_prev:',the_prev[item_id],'ss:',(c - the_prev_step[item_id] + 1)
-                    print (item_id,value,nn)
-                    raw_input_enter()
                 
                 windows[item_id].append(nn)
                                 
@@ -1181,7 +1325,7 @@ class BaseHandler(tornado.web.RequestHandler):
         
     def write_json(self,
                    hh,
-                   sort_keys = False,
+                   sort_keys = True,
                    indent = 4, #Set to None to do without newlines.
                    ):
         """
@@ -1210,28 +1354,41 @@ class handle_front(BaseHandler):
     
     @tornado.gen.coroutine
     def get(self):
+
+        as_html = intget(self.get_argument('html','0'), False)
+        offset = intget(self.get_argument('p','0'), False)
+        increment = 50
         
-        items = self.cccoin.get_hot_items()
+        items = self.cccoin.get_hot_items(offset = offset,
+                                          increment = increment,
+                                          )
+
+        if not as_html:
+            
+            self.write_json({'items':items})
+            
+        else:
+            tmpl = \
+            """
+            <html>
+              <head></head>
+              <body>
+               <h1>CCCoin</h1>
+               {% for item in items %}
+                  <a href="{{ item['link'] }}>
+                     {{ item['score'] }}
+                     point{{ item['score'] != 1 and 's' or '' }}:
+                     {{ item['title'] }}
+                  </a>
+                  <br>
+               {% end %}
+              </body>
+            </html>
+            """
+
+            self.render_template_s(tmpl, locals())
+
         
-        tmpl = \
-        """
-        <html>
-          <head></head>
-          <body>
-           <h1>CCCoin</h1>
-           {% for item in items %}
-              <a href="{{ item['link'] }}>
-                 {{ item['score'] }}
-                 point{{ item['score'] != 1 and 's' or '' }}:
-                 {{ item['title'] }}
-              </a>
-              <br>
-           {% end %}
-          </body>
-        </html>
-        """
-        
-        self.render_template_s(tmpl, locals())
 
 class handle_submit_item(BaseHandler):
     
@@ -1270,8 +1427,8 @@ class handle_vote(BaseHandler):
         assert item_id
         assert direction in [0, 1]
         
-        votes = {'i':item_id,
-                 'd':direction,
+        votes = {'item_id':item_id,
+                 'dir':direction,
                  }
         
         nonce = intget(self.get_argument('nonce',''), False)
