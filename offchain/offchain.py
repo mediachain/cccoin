@@ -39,11 +39,95 @@ python offchain.py deploy_dapp ## first time only
 python offchain.py witness
 python offchain.py web
 
+---- GETH:
+
+geth --fast --cache=1024 --rpc --testnet --datadir /datasets/ethereum_testnet
+
 """
+
+## TODO - use database:
 
 DATA_DIR = 'cccoin_conf/'
 CONTRACT_ADDRESS_FN = DATA_DIR + 'cccoin_contract_address.txt'
+USER_DB_FN = DATA_DIR + 'cccoin_users.json'
 
+
+######## Primitive, single-process key store:
+
+## TODO - use a KDF for extra protection of master password?
+
+import getpass
+from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
+from random import randint
+import json
+from os import rename
+
+class PoorMansKeystore():
+    def __init__(self,
+                 key = False,
+                 fn = USER_DB_FN,
+                 autosave = True,
+                 ):
+        
+        if key is False:
+            ## Prompt interactively:
+            key = getpass.getpass()
+            
+        self.key = key
+        self.fn = fn
+        self.accounts = {} ## {username:password}
+        self.autosave = autosave
+        self._load()
+    
+    def _load(self):
+
+        print ('LOADING...', self.fn)
+        
+        self.user_db_password = getpass.getpass()
+        
+        with open("encrypted.bin", "rb") as ff:
+            nonce, tag, ciphertext = [ff.read(x) for x in (16, 16, -1)]
+        
+        cipher = AES.new(self.key, AES.MODE_EAX, nonce)
+        data = cipher.decrypt_and_verify(ciphertext, tag)
+        
+        self.accounts = json.loads(data)
+
+        print ('LOADED', len(self.accounts))
+    
+    def _save(self):
+        
+        print ('SAVING...', self.fn)
+        
+        data = json.dumps(self.accounts)
+        
+        cipher = AES.new(key, AES.MODE_EAX)
+        
+        ciphertext, tag = cipher.encrypt_and_digest(data)
+
+        fn_temp = self.fn + '_temp_' + str(randint(1,10000000000))
+        
+        with open(fn_temp, "wb") as ff:
+            for d in (cipher.nonce, tag, ciphertext):
+                ff.write(d)
+        
+        rename(fn_temp, self.fn)
+        
+        print ('SAVED')
+    
+    def get_password(self, username, default = False):
+        return self.accounts.get(username, False)
+    
+    def set_password(self, username, password):
+        self.accounts[username] = password
+        
+        if self.autosave:
+            self._save()
+
+
+
+######## Ethereum parts:
 
 from ethjsonrpc import EthJsonRpc
 import json
@@ -466,13 +550,21 @@ class ContractWrapper:
         print ('CREATED_FILTER', self.filter)
             
 
-    def send_transaction(self, foo, value, callback = False, block = False):
+    def send_transaction(self, foo, args, callback = False, send_from = False, block = False):
         """
         1) Attempt to send transaction.
         2) Get first confirmation via transaction receipt.
         3) Re-check receipt again after N blocks pass.
+        
+        https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_sendtransaction
         """
-        tx = self.c.call_with_transaction(self.c.eth_coinbase(), self.contract_address, foo, value)
+        
+        if send_from is False:
+            send_from = self.c.eth_coinbase()
+        
+        send_to = self.contract_address 
+        
+        tx = self.c.call_with_transaction(send_from, send_to, foo, args)
         
         if block:
             receipt = self.c.eth_getTransactionReceipt(tx) ## blocks to ensure transaction is mined
@@ -505,6 +597,7 @@ class ContractWrapper:
     def read_transaction(self, foo, value):
         rr = self.c.call(self.c.eth_coinbase(), self.contract_address, foo, value)
         return rr
+
     
     def sign(self, user_address, value):
         rr = self.c.eth_sign(self.c.eth_coinbase(), self.contract_address, user_address, value)
@@ -579,34 +672,61 @@ def loads_compact(d):
 
 class CCCoinAPI:
     def __init__(self,):
-
-        self.cw = ContractWrapper(events_callback = self.event_logs_callback)
         
-        self.latest_block_number = -1
-        self.is_caught_up = False
-
-        ## Rewards:
+        ## TOK rewards settings:
         
-        self.REWARDS_CURATION = 90.0   ## TOK minted per block for curation rewards.
-        self.REWARDS_POSTING = 10.0    ## TOK minted per block for posting rewards.
+        self.REWARDS_CURATION = 90.0   ## Voting rewards
+        self.REWARDS_POSTING = 10.0    ## Posting rewards
+        self.REWARDS_WITNESS = 10.0    ## Witness rewards
+        self.REWARDS_SPONSOR = 10.0    ## Web nodes that cover basic GAS / TOK for users on their node.
         
         self.REWARDS_FREQUENCY = 140   ## 140 blocks = 7 hours
         
-        ## Maximum number of blocks allowed between submitting a blind vote and unblinding:
+        self.MAX_UNBLIND_DELAY = 20    ## Maximum number of blocks allowed between submitting a blind vote and unblinding.
         
-        self.MAX_UNBLIND_DELAY = 20
+        self.MAX_GAS_DEFAULT = 10000       ## Default max gas fee per contract call.
+        self.MAX_GAS_REWARDS = 10000       ## Max gas for rewards function.
+        
+        self.NEW_USER_TOK_DONATION = 1  ## Free LOCK given to new users that signup through this node.
+        
+        ## Contract interface:
+        
+        self.cw = ContractWrapper(events_callback = self.event_logs_callback)
 
+        ## Key store for users on this node:
         
+        self.master_password = getpass.getpass()
+
+        self.the_keystore = PoorMansKeystore(key = self.master_password) ## TODO - allow multiple keystore files?
+
+        ## Check that accounts that are both in the local keystore & the geth keystore:
+        
+        self.working_accounts = {} 
+        
+        num_good = 0
+        num_bad = 0
+        for addr in self.cw.personal_listAccounts():
+            upw = self.the_keystore.get_password(addr)
+            if (upw is not False) and self.cw.personal_unlockAccount(addr, upw, 0): ## Just for 1 second, to test.
+                self.working_accounts[addr] = upw
+                num_good += 1
+            else:
+                num_bad += 1
+        
+        print ('unlocked:', num_good, 'failed:', num_bad)
+        print ('Press Enter...')
+        raw_input()
+        
+        ## Tracking:
+        
+        self.latest_block_number = -1
+        self.is_caught_up = False
         
         ## User tracking:
 
         self.user_info = {}
         self.user_tok_balances = {}
         self.user_lok_balances = {}
-        
-        ## Key store for users on this node:
-        
-        self.private_key_store = {}
         
         ## Caches:
         
@@ -639,7 +759,7 @@ class CCCoinAPI:
 
         self.old_voters_for_item = {}      ## {item_id:set(voters)}
         self.new_voters_for_item = {}      ## {item_id:set(voters)}
-        
+    
     def event_logs_callback(self,
                             msg,
                             receipt,
@@ -700,6 +820,7 @@ class CCCoinAPI:
                 
                     tx = self.cw.send_transaction('addLog(bytes)',
                                                   [rr],
+                                                  value = self.MAX_GAS_DEFAULT,
                                                   )
                     
                     xx = self.new_rewards.items()
@@ -708,6 +829,7 @@ class CCCoinAPI:
                                                   [[x for x,y in xx],
                                                    [y for x,y in xx],
                                                   ],
+                                                  value = self.MAX_GAS_REWARDS,
                                                   )
                     self.new_rewards.clear()
                 
@@ -782,10 +904,17 @@ class CCCoinAPI:
                                                                                     ))
                         
                         self.recent_voting_hist[time_bucket][vote['item_id']] += 1 #vote['dir']
-                    
+            
             elif hh['t'] == 'post':
                 ## got post_item:
-                pass
+                
+                post = dumps_compact(hh['orig']) #{'t':'post', 'title': title, 'url':'url', 'user_id':user_id}
+                
+                item_id = self.cw.web3_sha3(hh['orig'])
+
+                post['item_id'] = item_id
+                
+                self.poster_ids[item_id] = post
             
             elif hh['t'] == 'lock_tok':
                 ## request to lockup tok
@@ -800,12 +929,40 @@ class CCCoinAPI:
         """
         self.cw.deploy()
     
-    
-    def create_account(self,):
+
+    def create_account(self, password, user_info):
         """
-        Register a new account, requires a fee.
+        Note: 
+        User needs LOCK balance before he can perform any accounts. 
+
+        Custom anti-spam measures should be added here by nodes, to prevent draining of funds.
         """
-        pass
+        
+        assert user_info['username']
+        
+        if user_info['username'] in self.username_to_id:
+            return {'success':False, 'error':'USERNAME_TAKEN'}
+        
+        user_address = self.c.personal_newAccount(self.cw.c.eth_coinbase(), password)
+        self.the_keystore.set_password(user_address, password)
+        self.working_accounts[addr] = password
+        
+        rr = dumps_compact({'t':'create_account', 'info':user_info, 'sponsor': self.cw.c.eth_coinbase()})
+        
+        ## Sent from contract owner, who will fund initial TOK and gas fees:
+        
+        tx = self.cw.send_transaction('newUser(bytes)', #'addLog(bytes)',
+                                      [rr,
+                                       self.NEW_USER_TOK_DONATION,
+                                       ],
+                                      value = self.MAX_GAS_DEFAULT,
+                                      )
+        
+        self.username_to_id[user_info['username']] = user_address ## TODO, wait for confirmations?
+        
+        return {'success':True, 'user_id':user_address, 'tx':tx}
+
+        
     
     
     def post_item(self,
@@ -815,17 +972,24 @@ class CCCoinAPI:
                   nonce = False,
                   ):
         
-        rr = dumps_compact({'t':'post', 'title': title, 'url':'url'})
-        
+        rr = dumps_compact({'t':'post', 'title': title, 'url':'url', 'user_id':user_id})
+
+        if user_id not in self.working_accounts:
+            return {'success':False, 'error':'ACCOUNT_NOT_LOADED'}
+
         tx = self.cw.send_transaction('addLog(bytes)',
                                       [rr],
+                                      #send_from = user_id,
+                                      value = self.MAX_GAS_DEFAULT,
                                       )
+
+        return {'success':True}
     
     def submit_blind_vote(self,
                           user_id,
                           votes,
                           nonce,
-                          user_private_key = False,
+                          user_password = False,
                           ):
         """
         Submit blinded vote(s) to blockchain.
@@ -842,10 +1006,6 @@ class CCCoinAPI:
             [{'item_id':item_id,'dir':direction,},...]
         
         `nonce` prevents out-of-order submission of votes & double sending of votes.
-        
-        Must either:
-          - User was created via this node, so private key can be looked up, or,
-          - Private key is passed.
         """
         
         h = {'user':user_id,
@@ -855,27 +1015,37 @@ class CCCoinAPI:
              }
         
         vv = dumps_compact(h)
+
+        if user_id not in self.working_accounts:
+            return {'success':False, 'error':'ACCOUNT_NOT_LOADED'}
         
+        #vs = self.cw.web3_sha3(vs)
+
         print ('SIGNING_VOTE', vv)
+
+        pw = self.the_keystore.get_password(user_id)
         
-        vs = self.cw.sign(user_address, vv)
+        vs = self.cw.sign(user_id, vv, pw)
         
         print ('SIGNED_VOTE', vs)
         
-        #vs = self.cw.web3_sha3(vs)
-        
         self.my_blind_votes[vs] = vv
-
+        
         rr = dumps_compact({'t':'vote_blinded', 'sig': vs, 'user_id':user_id})
         
         tx = self.cw.send_transaction('addLog(bytes)',
                                       [rr],
-                                      callback = lambda: self.unblind_votes(vv, vs),  ## Wait for full confirmation.
+                                      #send_from = user_id,
+                                      value = self.MAX_GAS_DEFAULT,
+                                      callback = lambda: self.unblind_votes(vv, vs, user_id),  ## Wait for full confirmation.
                                       )
+
+        return {'success':True}
         
     def unblind_votes(self,
                       vote_string,
                       vote_sig,
+                      user_id,
                       ):
         """
         """
@@ -884,25 +1054,38 @@ class CCCoinAPI:
                 
         tx = self.cw.send_transaction('addLog(bytes)',
                                       [rr],
+                                      #send_from = user_id,
+                                      value = self.MAX_GAS_DEFAULT,
                                       )
 
     def lockup_tok(self):
-        tx = self.cw.send_transaction('lockupTok(bytes)', [rr])
+        tx = self.cw.send_transaction('lockupTok(bytes)',
+                                      [rr],
+                                      value = self.MAX_GAS_DEFAULT,
+                                      )
 
     def get_balances(self,
                      user_id,
                      ):
-        xx = self.cw.read_transaction('lockupTok(bytes)', [rr])
+        xx = self.cw.read_transaction('lockupTok(bytes)',
+                                      [rr],
+                                      value = self.MAX_GAS_DEFAULT,
+                                      )
         rr = loads_compact(xx['data'])
         return rr
 
     def withdraw_lock(self,):
-        tx = self.cw.send_transaction('withdrawTok(bytes)', [rr])
+        tx = self.cw.send_transaction('withdrawTok(bytes)',
+                                      [rr],
+                                      value = self.MAX_GAS_DEFAULT,
+                                      )
     
     def distribute_rewards(self,):
         """
         """
-        tx = self.cw.send_transaction('distributeRewards(bytes)', [rr])
+        tx = self.cw.send_transaction('distributeRewards(bytes)',
+                                      value = self.MAX_GAS_DEFAULT,
+                                      [rr])
     
     def get_hot_items(self,
                       offset = 0,
@@ -1254,6 +1437,9 @@ class Application(tornado.web.Application):
                  ):
         
         handlers = [(r'/',handle_front,),
+                    (r'/vote',handle_vote,),
+                    (r'/submit',handle_submit_item,),
+                    (r'/create_account',handle_create_account,),
                     #(r'.*', handle_notfound,),
                     ]
         
@@ -1389,6 +1575,27 @@ class handle_front(BaseHandler):
             self.render_template_s(tmpl, locals())
 
         
+class handle_create_account(BaseHandler):
+    @tornado.gen.coroutine
+    def post(self):
+        """
+        TODO - Either charge a fee or employ 1 person = 1 account controls.
+        """
+        
+        username = self.get_argument('username','')
+        email = self.get_argument('email','')
+        passphrase = self.get_argument('passphrase','')
+
+        user_data = {'username':username,
+                     'email':email,
+                     }
+        
+        user = self.cccoin.create_account(user_data,
+                                          passphrase = passphrase,
+                                          ) 
+        
+        self.write_json(user)
+
 
 class handle_submit_item(BaseHandler):
     
@@ -1397,8 +1604,8 @@ class handle_submit_item(BaseHandler):
         
         user_id = self.get_current_user()
         
-        title = intget(self.get_argument('title',''), False)
-        url = intget(self.get_argument('url',''), False)
+        title = self.get_argument('title','')
+        url = self.get_argument('url','')
         nonce = intget(self.get_argument('nonce',''), False)
         
         assert title
@@ -1423,6 +1630,7 @@ class handle_vote(BaseHandler):
         
         item_id = intget(self.get_argument('item_id',''), False)
         direction = intget(self.get_argument('direction',''), False)
+        pw = self.get_argument('password','') ## TODO - eliminate when authentication system is added.
         
         assert item_id
         assert direction in [0, 1]
@@ -1436,6 +1644,7 @@ class handle_vote(BaseHandler):
         self.cccoin.submit_blind_vote(user_id,
                                       votes,
                                       nonce,
+                                      pw,
                                       )
 
         self.redirect('/')
