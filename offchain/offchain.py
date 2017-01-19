@@ -12,7 +12,7 @@ Version 2 will replace the single auditable witness with:
 
 ---- INSTALL:
 
-sudo add-apt-repository ppa:ethereum/ethereum
+#sudo add-apt-repository ppa:ethereum/ethereum
 sudo add-apt-repository ppa:ethereum/ethereum-dev
 sudo apt-get update
 
@@ -484,10 +484,9 @@ contract Tok is StandardToken{
 class ContractWrapper:
     
     def __init__(self,
-                 host = '127.0.0.1',
-                 port = 9999,
-                 #port = 8545,
-                 events_callback = False,
+                 events_callback,
+                 rpc_host = '127.0.0.1',
+                 rpc_port = 9999, ## 8545,
                  confirm_states = {'PENDING':0,
                                    'CONFIRM_1':1,
                                    'CONFIRMED':15,
@@ -504,6 +503,8 @@ class ContractWrapper:
              until `final_confirm_state`.
           - `contract_address` contract address, from previous `deploy()` call.
         """
+
+        self.loop_block_num = -1
         
         self.confirm_states = confirm_states
         self.events_callback = events_callback
@@ -518,11 +519,15 @@ class ContractWrapper:
         else:
             self.contract_address = contract_address
         
-        self.c = EthJsonRpc(host, port)
+        self.c = EthJsonRpc(rpc_host, rpc_port)
         
         self.pending_transactions = {}  ## {tx:callback}
         self.pending_logs = {}
         self.latest_block_number = -1
+
+        ###
+        
+        self.latest_block_num_done = 0
         
     def deploy(self):
         print ('DEPLOYING_CONTRACT...')        
@@ -533,23 +538,63 @@ class ContractWrapper:
         contract_tx = self.c.create_contract(self.c.eth_coinbase(), compiled, gas=3000000)
         self.contract_address = self.c.get_contract_address(contract_tx)
         print ('DEPLOYED', self.contract_address)
-        self.init_filter()
+        #self.init_logs_filter()
 
     def loop_once(self):
-        if self.events_callback:
-            self.check_transactions_committed()
-            self.logs_poll_pending()
-            self.check_logs_confirmed()
-    
-    def init_filter(self):
-        print ('CREATING_FILTER')
-        params = {"fromBlock": "0x01",
-                  "address": self.contract_address,
-                  }
-        self.filter = str(self.c.eth_newFilter(params))
-        print ('CREATED_FILTER', self.filter)
-            
+        
+        if self.c.eth_syncing():
+            print ('BLOCKCHAIN_STILL_SYNCING')
+            return
+        
+        if events_callback is not False:
+            self.poll_incoming()
+        
+        self.poll_outgoing()
+        
 
+    def poll_incoming(self):
+        """
+        https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_newfilter
+        """
+        
+        self.latest_block_num = int(self.c.eth_blockNumber(), 16)
+
+        for do_state in ['CONFIRMED',
+                         'PENDING',
+                         ]:
+            
+            self.latest_block_num_confirmed = max(0, self.latest_block_num - self.confirm_states[do_state])
+            
+            from_block = self.latest_block_num_done
+            
+            to_block = self.latest_block_num_confirmed
+            
+            got_block = 0
+            
+            params = {'fromBlock': from_block,
+                      'toBlock': to_block,
+                      'address': self.contract_address,
+                      }
+            
+            print ('eth_newFilter', 'do_state:', do_state, 'latest_block_num:', self.latest_block_num, 'params:', params)
+            
+            self.filter = str(self.c.eth_newFilter(params))
+            
+            print ('eth_getFilterChanges', self.filter)
+            
+            msgs = self.c.eth_getFilterChanges(self.filter)
+            
+            print ('GOT', len(msgs))
+            
+            for msg in msgs:
+                
+                got_block = int(receipt['blockNumber'], 16)
+
+                self.events_callback((msg, 'todo', do_state))
+
+                self.latest_block_num_done = max(0, max(self.latest_block_num_done, got_block - 1))
+        
+            
     def send_transaction(self, foo, args, callback = False, send_from = False, block = False):
         """
         1) Attempt to send transaction.
@@ -558,6 +603,8 @@ class ContractWrapper:
         
         https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_sendtransaction
         """
+        
+        self.latest_block_num = int(self.c.eth_blockNumber(), 16)
         
         if send_from is False:
             send_from = self.c.eth_coinbase()
@@ -571,27 +618,33 @@ class ContractWrapper:
             #if receipt['blockNumber']:
             #    self.latest_block_number = max(int(receipt['blockNumber'],16), self.latest_block_number)
         else:
-            self.pending_transactions[tx] = callback
+            self.pending_transactions[tx] = (callback, self.latest_block_num)
         
         return tx
 
-    def check_transactions_committed(self):
+    def poll_outgoing(self):
         """
-        Confirm transactions after `self.WAIT_BLOCKS` confirmations.
+        Confirm outgoing transactions.
         """
-        for tx, callback in self.pending_transactions.iteritems():
+        for tx, (callback, attempt_block_num) in self.pending_transactions.items():
+
+            ## Compare against the block_number where it attempted to be included:
+            
+            if (attempt_block_num <= self.latest_block_num - self.confirm_states['CONFIRMED']):
+                continue
+            
             receipt = self.c.eth_getTransactionReceipt(tx)
             
             if receipt['blockNumber']:
-                block_number = int(receipt['blockNumber'],16)
+                actual_block_number = int(receipt['blockNumber'],16)
             else:
-                block_number = False
-
-            #self.latest_block_number = max(block_number, self.latest_block_number)
+                ## TODO: wasn't confirmed after a long time.
+                actual_block_number = False
             
-            if (block_number is not False) and (block_number + self.confirm_states['CONFIRMED'] >= self.latest_block_number):
-                if callback is not False:
-                    callback(receipt)
+            ## Now compare against the block_number where it was actually included:
+            
+            if (actual_block_number is not False) and (actual_block_number >= self.latest_block_num - self.confirm_states['CONFIRMED']):
+                callback(receipt)
                 del self.pending_transactions[tx]
     
     def read_transaction(self, foo, value):
@@ -603,43 +656,9 @@ class ContractWrapper:
         rr = self.c.eth_sign(self.c.eth_coinbase(), self.contract_address, user_address, value)
         return rr
         
-    def logs_poll_pending(self):
-        """ 
-        Pick up events from the event logs.
-        """
-        
-        rr = self.c.eth_getFilterChanges(self.filter)
-        
-        for msg in rr:
-            self.pending_logs[msg['transactionHash']] = msg
-        
-        return rr
-    
-    def check_logs_confirmed(self):
-        """ 
-        Check the confirmation state of previously picked up log events.
-
-        Possible states:
-        
-        """
-        for msg, tx, callback in self.pending_logs.items():
-            
-            receipt = self.c.eth_getTransactionReceipt(tx)
-            
-            if receipt['blockNumber']:
-                block_number = int(receipt['blockNumber'],16)
-            else:
-                block_number = False
-            
-            #self.latest_block_number = max(block_number, self.latest_block_number)
-            
-            if (block_number is not False) and (block_number + self.confirm_states['CONFIRMED'] >= self.latest_block_number):
-                if self.events_callback is not False:
-                    self.events_callback((msg, receipt, 'CONFIRMED'))
-                del self.pending_logs[tx]
 
 
-def deploy_dapp(via_cli = False):
+def deploy_contract(via_cli = False):
     """
     Deploy new instance of this dApp to the blockchain.
     """
@@ -660,6 +679,7 @@ def deploy_dapp(via_cli = False):
     
     print ('DONE', addr, '->', fn)
 
+############### Utils:
 
 from os import urandom
     
@@ -670,8 +690,60 @@ def loads_compact(d):
     return json.loads(d, separators=(',', ':'))
 
 
+from Crypto.Hash import keccak
+
+sha3_256 = lambda x: keccak.new(digest_bits=256, data=x).digest()
+
+def web3_sha3(seed):
+    return '0x' + (sha3_256(str(seed)).encode('hex'))
+
+#assert web3_sha3('').encode('hex') == 'c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470'
+assert web3_sha3('') == '0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470'
+
+def consistent_hash(h):
+    ## Not using `dumps_compact()`, in case we want to change that later.
+    return web3_sha3(json.dumps(h, separators=(',', ':'), sort_keys=True))
+
+import multiprocessing
+
+class SharedCounter(object):
+    def __init__(self, n=0):
+        self.count = multiprocessing.Value('i', n)
+
+    def increment(self, n=1):
+        """ Increment the counter by n (default = 1) """
+        with self.count.get_lock():
+            self.count.value += n
+            r = self.count.value
+        return r
+
+    def decrement(self, n=1):
+        """ Decrement the counter by n (default = 1) """
+        with self.count.get_lock():
+            self.count.value -= n
+            r = self.count.value
+        return r
+
+    @property
+    def value(self):
+        """ Return the value of the counter """
+        return self.count.value
+
+
+############## CCCOINAPI:
+
+from ethjsonrpc.utils import hex_to_dec, clean_hex, validate_block
+
+## Shared among all forked sub-processes:
+RUN_ID = get_random_bytes(32).encode('hex')
+TRACKING_NUM = SharedCounter()
+
 class CCCoinAPI:
-    def __init__(self,):
+    def __init__(self, mode = 'web'):
+        
+        assert mode in ['web', 'witness', 'audit']
+        
+        self.mode = mode
         
         ## TOK rewards settings:
         
@@ -689,9 +761,13 @@ class CCCoinAPI:
         
         self.NEW_USER_TOK_DONATION = 1  ## Free LOCK given to new users that signup through this node.
         
+        ## Balances:
+
+        self.balances_tok = {}
+        
         ## Contract interface:
         
-        self.cw = ContractWrapper(events_callback = self.event_logs_callback)
+        self.cw = ContractWrapper(events_callback = self.rewards_and_auditing_callback)
 
         ## Key store for users on this node:
         
@@ -705,9 +781,15 @@ class CCCoinAPI:
         
         num_good = 0
         num_bad = 0
-        for addr in self.cw.personal_listAccounts():
+
+        accounts = self.cw.c._call('personal_listAccounts')
+        
+        for addr in accounts:
             upw = self.the_keystore.get_password(addr)
-            if (upw is not False) and self.cw.personal_unlockAccount(addr, upw, 0): ## Just for 1 second, to test.
+            
+            r = self.cw.c._call('personal_unlockAccount', [addr, upw, 0])
+            
+            if (upw is not False) and r:
                 self.working_accounts[addr] = upw
                 num_good += 1
             else:
@@ -759,19 +841,21 @@ class CCCoinAPI:
 
         self.old_voters_for_item = {}      ## {item_id:set(voters)}
         self.new_voters_for_item = {}      ## {item_id:set(voters)}
-    
-    def event_logs_callback(self,
-                            msg,
-                            receipt,
-                            confirm_level,
-                            ):
+
+        self.sponsors = {}
+        
+    def rewards_and_auditing_callback(self,
+                                      msg,
+                                      receipt,
+                                      confirm_level,
+                                      ):
         """
         """
         
         ## Proceed to next step for recently committed transactions:
         
         try:
-            hh = loads_compact(msg['data']) ## de-hex needed?
+            hh = loads_compact(msg['data'].decode('hex'))
         except:
             print ('BAD_MESSAGE', msg)
             return
@@ -781,7 +865,7 @@ class CCCoinAPI:
             block_number = int(msg['blockNumber'], 16)
             
             ## REWARDS:
-
+            
             if is_caught_up and (block_number > self.latest_block_number):
 
                 ## GOT NEW BLOCK:
@@ -793,7 +877,7 @@ class CCCoinAPI:
                 doing_block_id = block_number - (self.MAX_UNBLIND_DELAY + 1)
                 
                 total_lock_this_round = self.total_lock_at_block.get(doing_block_id, 0.0)
-                                
+                
                 for sig, (voter_id, item_id, voter_lock) in self.unblinded_votes_at_block.get(doing_block_id, {}).iteritems():
 
                     item_poster_id = self.poster_ids[item_id]
@@ -807,31 +891,46 @@ class CCCoinAPI:
                     reward_poster = self.REWARDS_POSTING * (total_lock_this_item / total_lock_this_round)
                     
                     for old_voter_id in self.old_voters_for_item[item_id]:
-                        
+
+                        ## Curator rewards:
                         self.new_rewards[old_voter_id] = self.new_rewards.get(old_voter_id, 0.0) + reward_per_voter
-                    
+
+                        ## Sponsor rewards for curation:
+                        if old_voter_id in self.sponsors:
+                            self.new_rewards[self.sponsors[old_voter_id]] = self.new_rewards.get(self.sponsors[old_voter_id], 0.0) +  (reward_per_voter / 10.0)
+                        
                     self.new_rewards[item_poster_id] = self.new_rewards.get(item_poster_id, 0.0) + reward_poster
                 
                 ## Occasionally distribute rewards:
-                
+
                 if (block_number % self.REWARDS_FREQUENCY) == 0:
+
+                    assert confirm_level == 'CONFIRMED', confirm_level
                     
-                    rr = dumps_compact({'t':'mint', 'rewards':self.new_rewards})
-                
-                    tx = self.cw.send_transaction('addLog(bytes)',
-                                                  [rr],
-                                                  value = self.MAX_GAS_DEFAULT,
-                                                  )
+                    if self.mode == 'audit':
+
+                        ## TODO - Wait a little longer, then check that previous batch paid out correctly.
+                        
+                        pass
                     
-                    xx = self.new_rewards.items()
-                    
-                    tx = self.cw.send_transaction('mintTok(bytes)',
-                                                  [[x for x,y in xx],
-                                                   [y for x,y in xx],
-                                                  ],
-                                                  value = self.MAX_GAS_REWARDS,
-                                                  )
-                    self.new_rewards.clear()
+                    elif self.mode == 'witness':
+                        
+                        rr = dumps_compact({'t':'mint', 'rewards':self.new_rewards})
+
+                        tx = self.cw.send_transaction('addLog(bytes)',
+                                                      [rr],
+                                                      value = self.MAX_GAS_DEFAULT,
+                                                      )
+
+                        xx = self.new_rewards.items()
+
+                        tx = self.cw.send_transaction('mintTok(bytes)',
+                                                      [[x for x,y in xx],
+                                                       [y for x,y in xx],
+                                                      ],
+                                                      value = self.MAX_GAS_REWARDS,
+                                                      )
+                        self.new_rewards.clear()
                 
                 ## Cleanup:
                 
@@ -905,20 +1004,27 @@ class CCCoinAPI:
                         
                         self.recent_voting_hist[time_bucket][vote['item_id']] += 1 #vote['dir']
             
-            elif hh['t'] == 'post':
-                ## got post_item:
-                
-                post = dumps_compact(hh['orig']) #{'t':'post', 'title': title, 'url':'url', 'user_id':user_id}
-                
-                item_id = self.cw.web3_sha3(hh['orig'])
+            elif hh['t'] == 'update_user':
 
+                ## For now, updates sponsor:
+                
+                if ('user_info' in hh) and ('sponsor' in hh['user_info']):
+                    self.sponsors[msg['address']] = hh['user_info']['sponsor']
+            
+            elif hh['t'] == 'post':
+                
+                post = loads_compact(hh['orig']) ## {'t':'post', 'title': title, 'url':'url', 'user_id':user_id}
+                
+                item_id = web3_sha3(hh['orig'])
+                
                 post['item_id'] = item_id
                 
                 self.poster_ids[item_id] = post
             
             elif hh['t'] == 'lock_tok':
                 ## request to lockup tok
-                pass
+
+                self.balances_tok
             
             for sig, block_number in self.my_votes_confirmed.iteritems():
                 pass
@@ -939,22 +1045,26 @@ class CCCoinAPI:
         """
         
         assert user_info['username']
+
+        user_info['sponsor'] = self.cw.c.eth_coinbase()
         
         if user_info['username'] in self.username_to_id:
             return {'success':False, 'error':'USERNAME_TAKEN'}
         
-        user_address = self.c.personal_newAccount(self.cw.c.eth_coinbase(), password)
+        user_address = self.cw.c._call('personal_newAccount', [self.cw.c.eth_coinbase(), password])
+        
         self.the_keystore.set_password(user_address, password)
         self.working_accounts[addr] = password
         
-        rr = dumps_compact({'t':'create_account', 'info':user_info, 'sponsor': self.cw.c.eth_coinbase()})
+        rr = dumps_compact({'t':'update_user', 'user_info':user_info})
         
         ## Sent from contract owner, who will fund initial TOK and gas fees:
         
-        tx = self.cw.send_transaction('newUser(bytes)', #'addLog(bytes)',
+        tx = self.cw.send_transaction('addLog(bytes)',
                                       [rr,
                                        self.NEW_USER_TOK_DONATION,
                                        ],
+                                      send_from = user_id, ## Required, since sponsor can be controlled.
                                       value = self.MAX_GAS_DEFAULT,
                                       )
         
@@ -962,28 +1072,30 @@ class CCCoinAPI:
         
         return {'success':True, 'user_id':user_address, 'tx':tx}
 
-        
-    
     
     def post_item(self,
                   user_id,
                   title,
                   url,
                   nonce = False,
+                  callback = False
                   ):
         
         rr = dumps_compact({'t':'post', 'title': title, 'url':'url', 'user_id':user_id})
 
+        item_id = consistent_hash(vv) ## TODO - add to local caches
+        
         if user_id not in self.working_accounts:
             return {'success':False, 'error':'ACCOUNT_NOT_LOADED'}
-
+        
         tx = self.cw.send_transaction('addLog(bytes)',
                                       [rr],
-                                      #send_from = user_id,
+                                      send_from = user_id,
                                       value = self.MAX_GAS_DEFAULT,
+                                      callback = callback,
                                       )
-
-        return {'success':True}
+        
+        return item_id
     
     def submit_blind_vote(self,
                           user_id,
@@ -1015,7 +1127,7 @@ class CCCoinAPI:
              }
         
         vv = dumps_compact(h)
-
+        
         if user_id not in self.working_accounts:
             return {'success':False, 'error':'ACCOUNT_NOT_LOADED'}
         
@@ -1035,7 +1147,7 @@ class CCCoinAPI:
         
         tx = self.cw.send_transaction('addLog(bytes)',
                                       [rr],
-                                      #send_from = user_id,
+                                      send_from = user_id,
                                       value = self.MAX_GAS_DEFAULT,
                                       callback = lambda: self.unblind_votes(vv, vs, user_id),  ## Wait for full confirmation.
                                       )
@@ -1054,7 +1166,7 @@ class CCCoinAPI:
                 
         tx = self.cw.send_transaction('addLog(bytes)',
                                       [rr],
-                                      #send_from = user_id,
+                                      send_from = user_id,
                                       value = self.MAX_GAS_DEFAULT,
                                       )
 
@@ -1079,32 +1191,13 @@ class CCCoinAPI:
                                       [rr],
                                       value = self.MAX_GAS_DEFAULT,
                                       )
-    
-    def distribute_rewards(self,):
-        """
-        """
-        tx = self.cw.send_transaction('distributeRewards(bytes)',
-                                      value = self.MAX_GAS_DEFAULT,
-                                      [rr])
-    
+        
     def get_hot_items(self,
                       offset = 0,
                       increment = 50,
                       ):
         pass
 
-
-def witness():
-    """
-    Run witness for vote computation and rewards distribution.
-    
-    TODO - optionally hook this into Tornado event loop.
-    """
-    xx = CCCoinAPI()
-
-    while True:
-        xx.loop_once()
-        sleep(0.5)
     
 ##
 ####
@@ -1440,6 +1533,7 @@ class Application(tornado.web.Application):
                     (r'/vote',handle_vote,),
                     (r'/submit',handle_submit_item,),
                     (r'/create_account',handle_create_account,),
+                    (r'/track',handle_track,),
                     #(r'.*', handle_notfound,),
                     ]
         
@@ -1474,7 +1568,7 @@ class BaseHandler(tornado.web.RequestHandler):
     def cccoin(self,
                ):
         if not hasattr(self.application,'cccoin'):
-            self.application.cccoin = CCCoinAPI()
+            self.application.cccoin = CCCoinAPI(mode = 'web')
         return self.application.cccoin
         
     
@@ -1611,14 +1705,21 @@ class handle_submit_item(BaseHandler):
         assert title
         assert url
         
-        self.cccoin.post_item(self,
-                              user_id,
-                              title,
-                              url,
-                              nonce,
-                              )
+        ## TODO: use callback to track confirmations?:
         
-        self.redirect('/')
+        tracking_id = RUN_ID + '|' + str(TRACKING_NUM.increment())
+        
+        item_id = self.cccoin.post_item(self,
+                                        user_id,
+                                        title,
+                                        url,
+                                        nonce,
+                                        )
+
+        self.write_json({'success':True,
+                         'item_id':item_id,
+                         'tracking_id':tracking_id,
+                         })
 
         
 class handle_vote(BaseHandler):
@@ -1633,7 +1734,7 @@ class handle_vote(BaseHandler):
         pw = self.get_argument('password','') ## TODO - eliminate when authentication system is added.
         
         assert item_id
-        assert direction in [0, 1]
+        assert direction in [1]
         
         votes = {'item_id':item_id,
                  'dir':direction,
@@ -1646,17 +1747,35 @@ class handle_vote(BaseHandler):
                                       nonce,
                                       pw,
                                       )
+        
+        tracking_id = RUN_ID + '|' + str(TRACKING_NUM.increment())
+        
+        self.write_json({'success':True,
+                         'tracking_id':tracking_id,
+                         })
 
-        self.redirect('/')
 
+class handle_track(BaseHandler):
+    
+    @tornado.gen.coroutine
+    def post(self):
+        
+        tracking_id = intget(self.get_argument('tracking_id',''), False)
+        
+        self.write_json({'success':True, 'tracking_id':tracking_id, 'status':False})
+        
 
 def web(port = 34567,
         via_cli = False,
         ):
     """
-    Start CCCoin web server.
+    Web mode: Web server = Yes, Write rewards = No, Audit rewards = No.
+
+    This mode runs a web server that users can access. Currently, writing of posts, votes and signups to the blockchain
+    from this mode is allowed. Writing of rewards is disabled from this mode, so that you can run many instances of the web server
+    without conflict.
     """
-        
+    
     print ('BINDING',port)
     
     try:
@@ -1675,8 +1794,34 @@ def web(port = 34567,
     print ('WEB_STARTED')
 
 
-functions=['deploy_dapp',
-           'witness',
+def witness():
+    """
+    Witness mode: Web server = No, Write rewards = No, Audit rewards = No.
+    
+    Only run 1 instance of this witness, per community (contract instantiation.)
+    
+    This mode collects up events and distributes rewards on the blockchain. Currently, you must be the be owner of 
+    the ethereum contract (you called `deploy_contract`) in order to distribute rewards.
+    """
+    
+    xx = CCCoinAPI(mode = 'witness')
+    
+    while True:
+        xx.loop_once()
+        sleep(0.5)
+
+def audit():
+    """
+    Audit mode: Web server = No, Write rewards = No, Audit rewards = Yes.
+    """
+    xx = CCCoinAPI(mode = 'audit')
+    
+    while True:
+        xx.loop_once()
+        sleep(0.5)
+    
+functions=['deploy_contract',
+           'audit',
            'web',
            ]
 
