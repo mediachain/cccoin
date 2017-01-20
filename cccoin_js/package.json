@@ -1,0 +1,16 @@
+{
+  "name": "cccoin.js",
+  "version": "0.0.1",
+  "description": "CCCoin Client",
+  "readmeFilename": "README.md",
+  "main": "cccoin.js",
+  "dependencies": {
+    "nonce": "~1.0.4",
+    "request": "~2.79.0"
+  },
+  "devDependencies": {},
+  "scripts": {},
+  "engines": {
+    "node": ">=0.10"
+  }
+}

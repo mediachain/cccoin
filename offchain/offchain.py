@@ -43,7 +43,12 @@ python offchain.py web
 
 geth --fast --cache=1024 --rpc --testnet --datadir /datasets/ethereum_testnet
 
+
+---- EXAMPLES:
+
+
 """
+
 
 ## TODO - use database:
 
@@ -730,15 +735,56 @@ class SharedCounter(object):
         return self.count.value
 
 
+############## Shared among all forked sub-processes:
+
+RUN_ID = get_random_bytes(32).encode('hex')
+
+TRACKING_NUM = SharedCounter()
+
+manager = multiprocessing.Manager()
+NONCE_DICT = manager.dict()
+
+
+############## Example API call:
+
+import hmac
+import hashlib
+import urllib
+import urllib2
+import json
+from time import time
+
+def auth_example(command,
+                 rq,
+                 user_key,
+                 secret_key,
+                 api_url = 'http://127.0.0.1:595959/api',
+                 ):
+    """
+    HMAC authenticated calls, with nonce.
+    """
+    rq = {}
+    rq['command'] = command
+    rq['nonce'] = int(time()*1000)
+    post_data = urllib.urlencode(rq)
+    sig = hmac.new(secret_key, post_data, hashlib.sha512).hexdigest()
+    headers = {'sig': sig,
+               'key': user_key,
+               }
+    ret = urllib2.urlopen(urllib2.Request(api_url, post_data, headers))
+    hh = json.loads(ret.read())
+    return hh
+    
+
+
 ############## CCCOINAPI:
 
 from ethjsonrpc.utils import hex_to_dec, clean_hex, validate_block
 
-## Shared among all forked sub-processes:
-RUN_ID = get_random_bytes(32).encode('hex')
-TRACKING_NUM = SharedCounter()
-
 class CCCoinAPI:
+    def _validate_api_call(self):
+        pass
+    
     def __init__(self, mode = 'web'):
         
         assert mode in ['web', 'witness', 'audit']
@@ -897,7 +943,7 @@ class CCCoinAPI:
 
                         ## Sponsor rewards for curation:
                         if old_voter_id in self.sponsors:
-                            self.new_rewards[self.sponsors[old_voter_id]] = self.new_rewards.get(self.sponsors[old_voter_id], 0.0) +  (reward_per_voter / 10.0)
+                            self.new_rewards[self.sponsors[old_voter_id]] = self.new_rewards.get(self.sponsors[old_voter_id], 0.0) +  (self.REWARDS_SPONSOR / self.REWARDS_CURATION)
                         
                     self.new_rewards[item_poster_id] = self.new_rewards.get(item_poster_id, 0.0) + reward_poster
                 
@@ -1152,7 +1198,9 @@ class CCCoinAPI:
                                       callback = lambda: self.unblind_votes(vv, vs, user_id),  ## Wait for full confirmation.
                                       )
 
-        return {'success':True}
+        tracking_id = RUN_ID + '|' + str(TRACKING_NUM.increment())
+        
+        return {'success':True, 'tracking_id':tracking_id}
         
     def unblind_votes(self,
                       vote_string,
@@ -1418,6 +1466,17 @@ def terminal_size():
                                                     ))
     return w, h
 
+def space_pad(s,
+              n=20,
+              center=False,
+              ch = '.'
+              ):
+    if center:
+        return space_pad_center(s,n,ch)    
+    s = unicode(s)
+    #assert len(s) <= n,(n,s)
+    return s + (ch * max(0,n-len(s)))
+
 def usage(functions,
           glb,
           entry_point_name = False,
@@ -1462,6 +1521,8 @@ def set_console_title(title):
     except:
         pass
 
+import sys
+from os import system
 
 def setup_main(functions,
                glb,
@@ -1742,17 +1803,13 @@ class handle_vote(BaseHandler):
         
         nonce = intget(self.get_argument('nonce',''), False)
         
-        self.cccoin.submit_blind_vote(user_id,
+        rr = self.cccoin.submit_blind_vote(user_id,
                                       votes,
                                       nonce,
                                       pw,
                                       )
         
-        tracking_id = RUN_ID + '|' + str(TRACKING_NUM.increment())
-        
-        self.write_json({'success':True,
-                         'tracking_id':tracking_id,
-                         })
+        self.write_json(rr)
 
 
 class handle_track(BaseHandler):
@@ -1796,7 +1853,7 @@ def web(port = 34567,
 
 def witness():
     """
-    Witness mode: Web server = No, Write rewards = No, Audit rewards = No.
+    Witness mode: Web server = No, Write rewards = Yes, Audit rewards = No.
     
     Only run 1 instance of this witness, per community (contract instantiation.)
     
@@ -1819,8 +1876,10 @@ def audit():
     while True:
         xx.loop_once()
         sleep(0.5)
-    
+
+        
 functions=['deploy_contract',
+           'witness',
            'audit',
            'web',
            ]
