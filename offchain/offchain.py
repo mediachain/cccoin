@@ -50,6 +50,10 @@ geth --fast --cache=1024 --rpc --testnet --datadir /datasets/ethereum_testnet
 """
 
 
+from os import mkdir, listdir, makedirs, walk, rename, unlink
+from os.path import exists,join,split,realpath,splitext,dirname
+
+
 ## TODO - use database:
 
 DATA_DIR = 'cccoin_conf/'
@@ -89,15 +93,18 @@ class PoorMansKeystore():
 
         print ('LOADING...', self.fn)
         
-        self.user_db_password = getpass.getpass()
-        
-        with open("encrypted.bin", "rb") as ff:
-            nonce, tag, ciphertext = [ff.read(x) for x in (16, 16, -1)]
-        
-        cipher = AES.new(self.key, AES.MODE_EAX, nonce)
-        data = cipher.decrypt_and_verify(ciphertext, tag)
-        
-        self.accounts = json.loads(data)
+        self.user_db_password = '1234'#getpass.getpass()
+
+        if not exists("encrypted.bin"):
+            self.accounts = {}
+        else:
+            with open("encrypted.bin", "rb") as ff:
+                nonce, tag, ciphertext = [ff.read(x) for x in (16, 16, -1)]
+
+            cipher = AES.new(self.key, AES.MODE_EAX, nonce)
+            data = cipher.decrypt_and_verify(ciphertext, tag)
+
+            self.accounts = json.loads(data)
 
         print ('LOADED', len(self.accounts))
     
@@ -689,9 +696,11 @@ def deploy_contract(via_cli = False):
 from os import urandom
     
 def dumps_compact(h):
+    print ('dumps_compact',h)
     return json.dumps(h, separators=(',', ':'), sort_keys=True)
 
 def loads_compact(d):
+    print ('loads_compact',d)
     return json.loads(d, separators=(',', ':'))
 
 
@@ -742,44 +751,42 @@ RUN_ID = get_random_bytes(32).encode('hex')
 TRACKING_NUM = SharedCounter()
 
 manager = multiprocessing.Manager()
-NONCE_DICT = manager.dict()
 
+LATEST_NONCE = manager.dict() ## {api_key:nonce}
 
-############## Example API call:
+USER_DB = manager.dict() ## {'public_key':user_info}
 
-import hmac
-import hashlib
-import urllib
-import urllib2
-import json
-from time import time
+TEST_MODE = True
 
-def auth_example(command,
-                 rq,
-                 user_key,
-                 secret_key,
-                 api_url = 'http://127.0.0.1:595959/api',
-                 ):
-    """
-    HMAC authenticated calls, with nonce.
-    """
-    rq = {}
-    rq['command'] = command
-    rq['nonce'] = int(time()*1000)
-    post_data = urllib.urlencode(rq)
-    sig = hmac.new(secret_key, post_data, hashlib.sha512).hexdigest()
-    headers = {'sig': sig,
-               'key': user_key,
-               }
-    ret = urllib2.urlopen(urllib2.Request(api_url, post_data, headers))
-    hh = json.loads(ret.read())
-    return hh
-    
+############### Load keypair key store:
 
+keystore_users_fn = 'keystore_users.json'
 
-############## CCCOINAPI:
+if exists(keystore_users_fn):
+    with open(keystore_users_fn) as f:
+        d = f.read()
+    h = json.loads(d)
+    USER_DB.update(h)
+
+    print ('LOADED', len(h), keystore_users_fn)
+
+############### CCCoin Core API:
 
 from ethjsonrpc.utils import hex_to_dec, clean_hex, validate_block
+
+from random import choice
+
+
+def generate_keypair():
+    from ethereum import transactions
+    from ethereum import utils
+
+    priv = urandom(32)
+    pub = utils.privtoaddr(priv)
+    
+    return utils.decode_addr(pub), priv
+    
+    
 
 class CCCoinAPI:
     def _validate_api_call(self):
@@ -817,7 +824,7 @@ class CCCoinAPI:
 
         ## Key store for users on this node:
         
-        self.master_password = getpass.getpass()
+        self.master_password = 'todo'#getpass.getpass()
 
         self.the_keystore = PoorMansKeystore(key = self.master_password) ## TODO - allow multiple keystore files?
 
@@ -828,22 +835,23 @@ class CCCoinAPI:
         num_good = 0
         num_bad = 0
 
-        accounts = self.cw.c._call('personal_listAccounts')
-        
-        for addr in accounts:
-            upw = self.the_keystore.get_password(addr)
-            
-            r = self.cw.c._call('personal_unlockAccount', [addr, upw, 0])
-            
-            if (upw is not False) and r:
-                self.working_accounts[addr] = upw
-                num_good += 1
-            else:
-                num_bad += 1
-        
-        print ('unlocked:', num_good, 'failed:', num_bad)
-        print ('Press Enter...')
-        raw_input()
+        if not TEST_MODE:
+            accounts = self.cw.c._call('personal_listAccounts')
+
+            for addr in accounts:
+                upw = self.the_keystore.get_password(addr)
+
+                r = self.cw.c._call('personal_unlockAccount', [addr, upw, 0])
+
+                if (upw is not False) and r:
+                    self.working_accounts[addr] = upw
+                    num_good += 1
+                else:
+                    num_bad += 1
+
+            print ('unlocked:', num_good, 'failed:', num_bad)
+            #print ('Press Enter...')
+            #raw_input()
         
         ## Tracking:
         
@@ -858,7 +866,7 @@ class CCCoinAPI:
         
         ## Caches:
         
-        self.hot_items_cache = []     ## [item_id,...]
+        self.items_cache = []     ## [item_id,...]
         self.recent_voting_hist = []  ## {hour:{item_id:num_votes}}
         
         self.cur_unblind_block_num = -1
@@ -1082,7 +1090,10 @@ class CCCoinAPI:
         self.cw.deploy()
     
 
-    def create_account(self, password, user_info):
+    def create_account(self,
+                       user_info,
+                       passphrase,
+                       ):
         """
         Note: 
         User needs LOCK balance before he can perform any accounts. 
@@ -1090,64 +1101,112 @@ class CCCoinAPI:
         Custom anti-spam measures should be added here by nodes, to prevent draining of funds.
         """
         
-        assert user_info['username']
 
         user_info['sponsor'] = self.cw.c.eth_coinbase()
+
+        public_wallet_address, private_wallet_key = generate_keypair()
         
-        if user_info['username'] in self.username_to_id:
-            return {'success':False, 'error':'USERNAME_TAKEN'}
+        if not TEST_MODE:
+            ## TODO: temporary
+
+            assert user_info['username']
+
+            if user_info['username'] in self.username_to_id:
+                return {'success':False, 'error':'USERNAME_TAKEN'}
+
+            user_address = self.cw.c._call('personal_newAccount', [self.cw.c.eth_coinbase(), passphrase])
+
+            self.the_keystore.set_password(user_address, passphrase)
+            self.working_accounts[addr] = passphrase
+
+            rr = dumps_compact({'t':'update_user',
+                                'user_info':user_info,
+                                'public_wallet_address':public_wallet_address,
+                                })
+
+            ## Sent from contract owner, who will fund initial TOK and gas fees:
+
+            tx = self.cw.send_transaction('addLog(bytes)',
+                                          [rr,
+                                           self.NEW_USER_TOK_DONATION,
+                                           ],
+                                          send_from = user_id, ## Required, since sponsor can be controlled.
+                                          value = self.MAX_GAS_DEFAULT,
+                                          )
+
+            self.username_to_id[user_info['username']] = user_address ## TODO, wait for confirmations?
+            
+        else:
+            uu = choice(USER_DB.values())
+            user_address = uu['public_key']
+
         
-        user_address = self.cw.c._call('personal_newAccount', [self.cw.c.eth_coinbase(), password])
         
-        self.the_keystore.set_password(user_address, password)
-        self.working_accounts[addr] = password
-        
-        rr = dumps_compact({'t':'update_user', 'user_info':user_info})
-        
-        ## Sent from contract owner, who will fund initial TOK and gas fees:
-        
-        tx = self.cw.send_transaction('addLog(bytes)',
-                                      [rr,
-                                       self.NEW_USER_TOK_DONATION,
-                                       ],
-                                      send_from = user_id, ## Required, since sponsor can be controlled.
-                                      value = self.MAX_GAS_DEFAULT,
-                                      )
-        
-        self.username_to_id[user_info['username']] = user_address ## TODO, wait for confirmations?
-        
-        return {'success':True, 'user_id':user_address, 'tx':tx}
+        return {'success':True,
+                'user_info':uu,
+                'user_id':public_wallet_address,
+                'public_wallet_address':public_wallet_address,
+                'private_wallet_key':private_wallet_key,
+                #'tx':tx,
+                }
 
     
     def post_item(self,
                   user_id,
-                  title,
-                  url,
-                  nonce = False,
+                  item_data_string,
+                  sig,
                   callback = False
                   ):
+        print ('INSIDE post_item')
         
-        rr = dumps_compact({'t':'post', 'title': title, 'url':'url', 'user_id':user_id})
+        hh = {'t':'post', 'user_id':user_id, 'sig':'sig', 'item_data':item_data_string}
+        
+        item_id = consistent_hash(hh)
+        
+        print ('INSIDE post_item2', item_id)
+        
+        rr = dumps_compact(hh)
+        
+        print ('INSIDE post_item3')
+        
+        item_data = loads_compact(item_data_string)
 
-        item_id = consistent_hash(vv) ## TODO - add to local caches
+        print ('INSIDE post_item4')
         
-        if user_id not in self.working_accounts:
-            return {'success':False, 'error':'ACCOUNT_NOT_LOADED'}
+        if item_id in self.items_cache:
+            print 'RETURN1'
+            return {'success':True, 'item_id':item_id}
+
+
+        print ('INSIDE post_item5')
+
+        if not TEST_MODE:
+            if user_id not in self.working_accounts:
+                print 'RETURN2'
+                return {'success':False, 'error':'ACCOUNT_NOT_LOADED'}
         
-        tx = self.cw.send_transaction('addLog(bytes)',
-                                      [rr],
-                                      send_from = user_id,
-                                      value = self.MAX_GAS_DEFAULT,
-                                      callback = callback,
-                                      )
+        hh['created'] = int(time())
+        hh['item_id'] = item_id
+        hh['score'] = 1
+        hh['score_weighted'] = 1
         
-        return item_id
+        ## TODO: put LOCK-weighted scores in cache?
+        
+        self.items_cache[item_id] = hh
+
+        if not TEST_MODE:
+            tx = self.cw.send_transaction('addLog(bytes)',
+                                          [rr],
+                                          send_from = user_id,
+                                          value = self.MAX_GAS_DEFAULT,
+                                          callback = callback,
+                                          )
+        print 'RETURN3'
+        return {'success':True, 'item_id':item_id}
     
     def submit_blind_vote(self,
-                          user_id,
-                          votes,
-                          nonce,
-                          user_password = False,
+                          vote_string,
+                          sig,
                           ):
         """
         Submit blinded vote(s) to blockchain.
@@ -1166,58 +1225,65 @@ class CCCoinAPI:
         `nonce` prevents out-of-order submission of votes & double sending of votes.
         """
         
-        h = {'user':user_id,
-             'votes':votes,
-             'block':self.latest_block_number, ## if not accepted by miners fast enough, vote is cancelled.
-             'time':int(time()),               ## utc time, for debugging.
-             }
-        
-        vv = dumps_compact(h)
-        
-        if user_id not in self.working_accounts:
-            return {'success':False, 'error':'ACCOUNT_NOT_LOADED'}
-        
-        #vs = self.cw.web3_sha3(vs)
-
-        print ('SIGNING_VOTE', vv)
-
-        pw = self.the_keystore.get_password(user_id)
-        
-        vs = self.cw.sign(user_id, vv, pw)
-        
-        print ('SIGNED_VOTE', vs)
-        
-        self.my_blind_votes[vs] = vv
-        
-        rr = dumps_compact({'t':'vote_blinded', 'sig': vs, 'user_id':user_id})
-        
-        tx = self.cw.send_transaction('addLog(bytes)',
-                                      [rr],
-                                      send_from = user_id,
-                                      value = self.MAX_GAS_DEFAULT,
-                                      callback = lambda: self.unblind_votes(vv, vs, user_id),  ## Wait for full confirmation.
-                                      )
-
         tracking_id = RUN_ID + '|' + str(TRACKING_NUM.increment())
+
+        ## Note: if not accepted by miners fast enough, vote is cancelled:
         
-        return {'success':True, 'tracking_id':tracking_id}
+        self.my_blind_votes[sig] = {'votes':json.loads(vote_string),
+                                    'submitted_block': self.latest_block_number,
+                                    'submitted_time':int(time()),
+                                    }
+        
+        rr = dumps_compact({'t':'vote_blinded', 'sig': sig})
+        
+        if not TEST_MODE:
+            tx = self.cw.send_transaction('addLog(bytes)',
+                                          [rr],
+                                          #send_from = user_id,
+                                          value = self.MAX_GAS_DEFAULT,
+                                          callback = lambda: self.unblind_votes(vv, vs, user_id),  ## Wait for full confirmation.
+                                          )
+        
+        return {'success':True, 'tracking_id':tracking_id, 'sig':sig}
         
     def unblind_votes(self,
                       vote_string,
                       vote_sig,
-                      user_id,
+                      #user_id,
                       ):
         """
         """
+
+        hh = json.loads(vote_string)
+        
+        ## Immediately add to local caches:
+        
+        if TEST_MODE:
+            if vote_sig not in self.my_blind_votes:
+                return {'error':'BLINDED_VOTE_NOT_FOUND'}
+            
+            for vote in hh['votes']:
+                
+                if vote.get('direction',1) not in [1]:
+                    return {'error':'VOTE_BAD_DIRECTION'}
+
+                if vote['item_id'] not in self.items_cache:
+                    return {'error':'ITEM_ID_NOT_FOUND','message':vote['item_id']}
+                
+                self.items_cache[vote['item_id']]['score'] += 1
         
         rr = dumps_compact({'t':'vote_unblinded', 'sig': vote_sig, 'orig': vote_string})
-                
-        tx = self.cw.send_transaction('addLog(bytes)',
-                                      [rr],
-                                      send_from = user_id,
-                                      value = self.MAX_GAS_DEFAULT,
-                                      )
 
+        if not simple_mode:
+            ## Send to blockchain:
+
+            tx = self.cw.send_transaction('addLog(bytes)',
+                                          [rr],
+                                          #send_from = user_id,
+                                          value = self.MAX_GAS_DEFAULT,
+                                          )
+        return {'success':True}
+            
     def lockup_tok(self):
         tx = self.cw.send_transaction('lockupTok(bytes)',
                                       [rr],
@@ -1227,7 +1293,7 @@ class CCCoinAPI:
     def get_balances(self,
                      user_id,
                      ):
-        xx = self.cw.read_transaction('lockupTok(bytes)',
+        xx = self.cw.read_transaction('balanceOf(address)',
                                       [rr],
                                       value = self.MAX_GAS_DEFAULT,
                                       )
@@ -1240,12 +1306,26 @@ class CCCoinAPI:
                                       value = self.MAX_GAS_DEFAULT,
                                       )
         
-    def get_hot_items(self,
-                      offset = 0,
-                      increment = 50,
-                      ):
-        pass
-
+    def get_items(self,
+                  offset = 0,
+                  increment = 50,
+                  sort_by = 'score',
+                  ):
+        """
+        Get sorted items.
+        """
+        print ('GET_ITEMS', offset, increment, sort_by)
+        
+        assert sort_by in ['score', 'created'], sort_by
+        
+        rr = list(sorted([(x[sort_by],x) for x in self.items_cache], reverse=True))
+        rr = rr[offset:offset + increment]
+        rr = [y for x,y in rr]
+        
+        rrr = {'success':True, 'items':rr, 'sort':sort_by}
+        
+        return rrr
+        
     
 ##
 ####
@@ -1583,24 +1663,264 @@ from tornado.httpserver import HTTPServer
 from tornado.ioloop import IOLoop
 from tornado.options import define, options
 
-from os import mkdir, listdir, makedirs, walk, rename, unlink
-from os.path import exists,join,split,realpath,splitext,dirname
+############## Authentication:
+
+import hmac
+import hashlib
+import urllib
+import urllib2
+import json
+from time import time
+
+from urllib import quote
+import tornado.web
+import tornado.gen
+
+import pipes
+
+
+def auth_test(rq,
+              user_key,
+              secret_key,
+              api_url = 'http://127.0.0.1:50000/api',
+              ):
+    """
+    HMAC authenticated calls, with nonce.
+    """
+    rq['nonce'] = int(time()*1000)
+    #post_data = urllib.urlencode(rq)
+    post_data = dumps_compact(rq)
+    sig = hmac.new(secret_key, post_data, hashlib.sha512).hexdigest()
+    headers = {'Sig': sig,
+               'Key': user_key,
+               }
+    
+    print ("REQUEST:\n\ncurl -S " + api_url + " -d " + pipes.quote(post_data) + ' -H ' + pipes.quote('Sig: ' + headers['Sig']) + ' -H ' + pipes.quote('Key: ' + headers['Key']))
+
+    return
+
+    ret = urllib2.urlopen(urllib2.Request(api_url, post_data, headers))
+    hh = json.loads(ret.read())
+    return hh
+
+
+def sig_helper(via_cli = False):
+    """
+    CLI helper for authenticated requests. Usage: api_call user_key secret_key json_string
+    """
+    #print sys.argv
+    
+    user_key = sys.argv[2]
+    secret_key = sys.argv[3]
+    rq = json.loads(sys.argv[4])
+
+    print ('THE_REQUEST',rq)
+    
+    rr = auth_test(rq,
+                   user_key,
+                   secret_key,
+                   api_url = 'http://127.0.0.1:50000/api',
+                   )
+    print json.dumps(rr, indent = 4)
+
+
+import functools
+import urllib
+import urlparse
+
+
+from uuid import uuid4
+
+from ujson import loads,dumps
+from time import time
+
+
+class AuthState:
+    def __init__(self):
+        pass
+        
+    def login_and_init_session(self,
+                               caller,
+                               session,
+                               ):
+        print ('login_and_init_session()')
+        assert session
+        
+        session['last_updated'] = time()
+        session = dumps(session)
+        caller.set_secure_cookie('auth',session)
+        
+    def logout(self,
+               caller,
+               ):
+        caller.set_secure_cookie('auth','false')
+        
+    def update_session(self,
+                       caller,
+                       session,
+                       ):
+        print ('update_session()')
+        assert session
+        
+        session['last_updated'] = int(time())
+        session = dumps(session)
+        caller.set_secure_cookie('auth',session)
+    
+
+def get_session(self,
+                extend = True,
+                ):
+
+    ## Track some basic metrics:
+    
+    referer=self.request.headers.get('Referer','')
+    orig_referer=self.get_secure_cookie('orig_referer')
+    
+    if not orig_referer:
+        self.set_secure_cookie('orig_referer',
+                               str(referer),
+                               )
+    
+        orig_page=self.get_secure_cookie('orig_page')
+        if not orig_page:
+            self.set_secure_cookie('orig_page',
+                                   str(self.request.uri),
+                                   )
+        
+        orig_time=self.get_secure_cookie('orig_time')
+        if not orig_time:
+            self.set_secure_cookie('orig_time',
+                                   str(time()),
+                                   )
+        
+    ## Check auth:
+    
+    r = self.get_secure_cookie('auth')#,False
+    
+    print ('get_session() AUTH',repr(r))
+    
+    if not r:
+        self.set_secure_cookie('auth','false')
+        return False
+    
+    session = loads(r)
+    
+    if not session:
+        self.set_secure_cookie('auth','false')
+        return False
+    
+    return session
+
+
+def validate_api_call(post_data,
+                      user_key,
+                      secret_key,
+                      sig,
+                      ):
+    """
+    HMAC authenticated calls, with nonce.
+    """
+
+    sig_expected = hmac.new(str(secret_key), str(post_data), hashlib.sha512).hexdigest()
+    
+    if sig != sig_expected:
+        print ('BAD SIGNATURE', 'user_key:', user_key)
+        return (False, 'BAD_SIGNATURE')
+    
+    rq = json.loads(post_data)
+    
+    if (user_key in LATEST_NONCE) and (rq['nonce'] <= LATEST_NONCE[user_key]):
+        print ('OUTDATED NONCE')
+        return (False, 'OUTDATED NONCE')
+
+    LATEST_NONCE[user_key] = rq['nonce']
+    
+    return (True, '')
+
+
+def lookup_session(self,
+                   public_key,
+                   ):
+    return USER_DB.get(public_key, False)
+
+
+def check_auth(auth = True,
+               ):
+    """
+    Authentication via HMAC signatures, nonces, and a local keypair DB.
+    
+    TODO: Fine-grained permissions.
+    """
+    
+    def decorator(func):
+        
+        def proxyfunc(self, *args, **kw):
+
+            user_key = dict(self.request.headers).get("Key", False)
+            
+            print ('AUTH_CHECK_USER',user_key)
+            
+            self._current_user = lookup_session(self, user_key)
+            
+            print ('AUTH_GOT_USER', self._current_user)
+
+            print ('HEADERS', dict(self.request.headers))
+            
+            if auth:
+                
+                if self._current_user is False:
+                    self.write_json({'error':'USER_NOT_FOUND', 'message':user_key})
+                    #raise tornado.web.HTTPError(403)
+                    return
+
+                post_data = self.request.body
+                sig = dict(self.request.headers).get("Sig", False)
+                secret_key = self._current_user['private_key']
+
+                if not (user_key or sig or secret_key):
+                    self.write_json({'error':'AUTH_REQUIRED'})
+                    #raise tornado.web.HTTPError(403)
+                    return
+
+                r1, r2 = validate_api_call(post_data,
+                                           user_key,
+                                           secret_key,
+                                           sig,
+                                           )
+                if not r1:
+
+                    self.write_json({'error':'AUTH_FAILED', 'message':r2})
+                    #raise tornado.web.HTTPError(403)
+                    return
+            
+            func(self, *args, **kw)
+
+            return
+        return proxyfunc
+    return decorator
+
+
+############## Web core:
+
 
 class Application(tornado.web.Application):
     def __init__(self,
                  ):
         
         handlers = [(r'/',handle_front,),
-                    (r'/vote',handle_vote,),
+                    (r'/vote_blind',handle_vote_blind,),
+                    (r'/vote_unblind',handle_vote_unblind,),
                     (r'/submit',handle_submit_item,),
                     (r'/create_account',handle_create_account,),
                     (r'/track',handle_track,),
+                    (r'/api',handle_api,),
                     #(r'.*', handle_notfound,),
                     ]
         
         settings = {'template_path':join(dirname(__file__), 'templates_cccoin'),
                     'static_path':join(dirname(__file__), 'static_cccoin'),
                     'xsrf_cookies':False,
+                    'cookie_secret':'1234',
                     }
         
         tornado.web.Application.__init__(self, handlers, **settings)
@@ -1611,10 +1931,12 @@ class BaseHandler(tornado.web.RequestHandler):
     def __init__(self, application, request, **kwargs):
         RequestHandler.__init__(self, application, request, **kwargs)
         
-        self._current_user=False
+        self._current_user = False
         
-        self.loader=tornado.template.Loader('templates_cccoin/')
-    
+        self.loader = tornado.template.Loader('templates_cccoin/')
+
+        #self.auth_state = False
+        
     @property
     def io_loop(self,
                 ):
@@ -1626,13 +1948,18 @@ class BaseHandler(tornado.web.RequestHandler):
         return self._current_user
 
     @property
+    def auth_state(self):
+        if not self.application.auth_state:
+            self.application.auth_state = AuthState()
+        return self.application.auth_state
+
+    @property
     def cccoin(self,
                ):
         if not hasattr(self.application,'cccoin'):
             self.application.cccoin = CCCoinAPI(mode = 'web')
         return self.application.cccoin
         
-    
     @tornado.gen.engine
     def render_template(self,template_name, kwargs):
         """
@@ -1672,6 +1999,9 @@ class BaseHandler(tornado.web.RequestHandler):
         """
         Central point where we can customize the JSON output.
         """
+
+        print ('WRITE_JSON',hh)
+        
         if 'error' in hh:
             print ('ERROR',hh)
         
@@ -1688,25 +2018,32 @@ class BaseHandler(tornado.web.RequestHandler):
                     status_code,
                     **kw):
         
-        self.write('INTERNAL_ERROR')
+        self.write_json({'error':'INTERNAL_EXCEPTION'})
+
+    
 
 
 class handle_front(BaseHandler):
-    
+
+    #@check_auth(auth = False)
     @tornado.gen.coroutine
     def get(self):
 
-        as_html = intget(self.get_argument('html','0'), False)
-        offset = intget(self.get_argument('p','0'), False)
-        increment = 50
+        as_html = intget(self.get_argument('html','0'), 0)
+        offset = intget(self.get_argument('offset','0'), 0)
+        increment = intget(self.get_argument('increment','50'), 50) or 50
+        sort_by = self.get_argument('sort','score')
         
-        items = self.cccoin.get_hot_items(offset = offset,
-                                          increment = increment,
-                                          )
+        items = self.cccoin.get_items(offset = offset,
+                                      increment = increment,
+                                      sort_by = sort_by,
+                                      )
 
+        print ('ITEMS', items)
+        
         if not as_html:
             
-            self.write_json({'items':items})
+            self.write_json(items)
             
         else:
             tmpl = \
@@ -1715,7 +2052,7 @@ class handle_front(BaseHandler):
               <head></head>
               <body>
                <h1>CCCoin</h1>
-               {% for item in items %}
+               {% for item in items['items'] %}
                   <a href="{{ item['link'] }}>
                      {{ item['score'] }}
                      point{{ item['score'] != 1 and 's' or '' }}:
@@ -1731,89 +2068,150 @@ class handle_front(BaseHandler):
 
         
 class handle_create_account(BaseHandler):
+    
+    @check_auth(auth = False)
     @tornado.gen.coroutine
     def post(self):
         """
         TODO - Either charge a fee or employ 1 person = 1 account controls.
         """
         
-        username = self.get_argument('username','')
-        email = self.get_argument('email','')
-        passphrase = self.get_argument('passphrase','')
+        print ('CREATE_ACCOUNT')
 
-        user_data = {'username':username,
-                     'email':email,
-                     }
+        hh = json.loads(self.request.body)
+        
+        user_data = hh.get('user_data',{})
+
+        password = hh.get('password','')
+        
+        if not password:
+            self.write_json({'error':'BAD_PASSWORD'})
+            return
         
         user = self.cccoin.create_account(user_data,
-                                          passphrase = passphrase,
+                                          password,
                                           ) 
+
+        print ('CREATE_ACCOUNT_RETURNING', user)
         
         self.write_json(user)
 
 
 class handle_submit_item(BaseHandler):
-    
+
+    @check_auth()
     @tornado.gen.coroutine
     def post(self):
+
+        print ('INSIDE handle_submit_item')
         
-        user_id = self.get_current_user()
-        
-        title = self.get_argument('title','')
-        url = self.get_argument('url','')
-        nonce = intget(self.get_argument('nonce',''), False)
-        
-        assert title
-        assert url
+        user = self.get_current_user()
+
+        data = self.request.body
         
         ## TODO: use callback to track confirmations?:
         
         tracking_id = RUN_ID + '|' + str(TRACKING_NUM.increment())
-        
-        item_id = self.cccoin.post_item(self,
-                                        user_id,
-                                        title,
-                                        url,
-                                        nonce,
-                                        )
 
-        self.write_json({'success':True,
-                         'item_id':item_id,
-                         'tracking_id':tracking_id,
-                         })
+        sig = dict(self.request.headers).get("Sig", False)
+        
+        rr = self.cccoin.post_item(user['public_key'],
+                                   data,
+                                   sig,
+                                   )
 
-        
-class handle_vote(BaseHandler):
-    
-    @tornado.gen.coroutine
-    def post(self):
-
-        user_id = self.get_current_user()
-        
-        item_id = intget(self.get_argument('item_id',''), False)
-        direction = intget(self.get_argument('direction',''), False)
-        pw = self.get_argument('password','') ## TODO - eliminate when authentication system is added.
-        
-        assert item_id
-        assert direction in [1]
-        
-        votes = {'item_id':item_id,
-                 'dir':direction,
-                 }
-        
-        nonce = intget(self.get_argument('nonce',''), False)
-        
-        rr = self.cccoin.submit_blind_vote(user_id,
-                                      votes,
-                                      nonce,
-                                      pw,
-                                      )
+        print ('DONE_SUBMIT', rr)
         
         self.write_json(rr)
 
 
-class handle_track(BaseHandler):
+from tornado.httpclient import AsyncHTTPClient
+
+class handle_api(BaseHandler):
+
+    #@check_auth()
+    @tornado.gen.coroutine
+    def post(self):
+
+        data = self.request.body
+        
+        hh = json.loads(data)
+        
+        print ('THE_BODY', data)
+                
+        forward_url = 'http://127.0.0.1:50000/' + hh['command']
+
+        print ('API_FORWARD', forward_url)
+        
+        response = yield AsyncHTTPClient().fetch(forward_url,
+                                                 method = 'POST',
+                                                 connect_timeout = 30,
+                                                 request_timeout = 30,
+                                                 body = data,
+                                                 headers = dict(self.request.headers),
+                                                 #allow_nonstandard_methods = True,
+                                                 )
+        d2 = response.body
+
+        print ('D2', d2)
+        
+        self.write(d2)
+        self.finish()
+        
+        
+        
+        
+        
+class handle_vote_blind(BaseHandler):
+
+    @check_auth()
+    @tornado.gen.coroutine
+    def post(self):
+        
+        vote_string = self.request.body
+        
+        user = self.get_current_user()
+        
+        h = json.loads(vote_string)
+        
+        assert h['user_id'] == user['public_key'] ## In theory, it's fine to forward other people's signed votes....
+        
+        sig = dict(self.request.headers).get("Sig", False)
+        
+        rr = self.cccoin.submit_blind_vote(vote_string,
+                                           sig,
+                                           )
+        
+        self.write_json(rr)
+
+
+class handle_vote_unblind(BaseHandler):
     
+    @check_auth()
+    @tornado.gen.coroutine
+    def post(self):
+        
+        vote_string = self.request.body
+        
+        user = self.get_current_user()
+        
+        h = json.loads(vote_data)
+        
+        assert h['user_id'] == user['public_key'] ## In theory, not required.
+        
+        sig = dict(self.request.headers).get("Sig", False)
+        
+        rr = self.cccoin.unblind_votes(vote_string,
+                                       sig,
+                                       )
+        
+        self.write_json(rr)
+
+
+        
+class handle_track(BaseHandler):
+
+    @check_auth()
     @tornado.gen.coroutine
     def post(self):
         
@@ -1822,7 +2220,7 @@ class handle_track(BaseHandler):
         self.write_json({'success':True, 'tracking_id':tracking_id, 'status':False})
         
 
-def web(port = 34567,
+def web(port = 50000,
         via_cli = False,
         ):
     """
@@ -1882,6 +2280,7 @@ functions=['deploy_contract',
            'witness',
            'audit',
            'web',
+           'sig_helper',
            ]
 
 def main():    

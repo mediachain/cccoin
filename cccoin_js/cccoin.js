@@ -22,11 +22,11 @@ module.exports = (function() {
                 return encodeURIComponent(param) + '=' + encodeURIComponent(params[param]);
             }).join('&');
 
-            signature = crypto.createHmac('sha512', secret).update(paramString).digest('hex');
+            signature = crypto.createHmac('sha256', secret).update(paramString).digest('hex');
 
             return {
                 Key: key,
-                Sign: signature
+                Sig: signature
             };
         };
     }

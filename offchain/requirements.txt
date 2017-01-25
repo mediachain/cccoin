@@ -1,0 +1,5 @@
+ethjsonrpc==0.3.0
+ujson==1.35
+tornado==4.3
+pycryptodome==3.4.3
+ethereum==1.0.8
