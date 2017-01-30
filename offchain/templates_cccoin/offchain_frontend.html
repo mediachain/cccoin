@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    
+    <script
+       src="https://code.jquery.com/jquery-3.1.1.min.js"
+       integrity="sha256-hVVnYaiADRTO2PzUGmuLJr8BLUSjGIZsDYGmIJLv2b8="
+       crossorigin="anonymous"></script>
+    
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-color/2.1.2/jquery.color.min.js"></script> -->
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script> -->
+    <!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.css"> -->
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.98.0/css/materialize.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.98.0/js/materialize.min.js"></script>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+    <!-- https://github.com/ethereumjs/browser-builds -->
+    <script src="/static/ethereumjs-all.js?v=1"></script>
+
+    <!-- https://github.com/ethereumjs/keythereum -->
+    <script src="/static/keythereum.min.js?v=1"></script>
+    
+    <script src="/static/offchain_frontend.js"></script>
+    
+    <title>CCCoin</title>
+
+    <style>
+.container{width:99%;max-width:100%;}
+
+h1, h2, h3, h4, h5, .brand-logo{
+    font-weight:200
+}
+
+.brand-logo{
+    position:static !important;transform:translate(40%) !important;width:100%;margin-left:10px;
+}
+.tabs {margin-top:60px !important;margin-top:0 !important;}
+
+@media only screen and (min-width : 601px) {
+    .tabs {margin-top:0px !important;width:auto;float:left;margin-left:20px;}
+    .brand-logo{width:auto;float:left;position:static !important;font-size:24px;line-height:50px;transform:none !important}
+    
+}
+
+
+nav ul li a, brand-logo{
+    color: black;
+}
+
+
+.tabs .tab a{
+    color: black !important;
+    padding: 0 24px !important;
+}
+
+/*.tab:first-child a{
+      color: black !important;
+      padding: 0 24px 0 0px !important;
+      }*/
+
+.tabs .indicator {
+    background-color: black !important;
+    /*margin-right:24px;*/
+}
+
+.pagination li:first-child a{
+    padding-left:0 !important;
+}
+
+.card{margin-top:0;overflow:hidden;}
+
+.card-image{height:auto;overflow:hidden;background:#000}
+
+@media only screen and (min-width : 601px) {
+    /*.card-image{height:120px;overflow:hidden;}*/
+    .card-image img{object-fit: cover;height:150px;}
+}
+
+@media only screen and (min-width : 993px) {
+    /*.card-image{height:120px;overflow:hidden;}*/
+    .card-image img{object-fit: cover;height:200px;}
+}
+
+
+.card-title {display:none;pointer-events: none;font-size:20px !important;padding:24px 5px !important;}
+.card-content {padding:20px 5px 5px 5px !important;position:relative;}
+
+.small-card-image{width:50px;overflow:hidden;}
+.small-card-image img{object-fit: cover;width:50px;}
+
+.btn-floating{position:fixed;}
+.btn-floating-1{right:60px !important;position:fixed;}
+.btn-floating-2{right:10px !important;}
+
+tbody tr td{padding:5px}
+
+.transactions-table tbody tr td{padding:5px}
+
+.transactions-table tbody, .transactions-table thead {
+    display:block;
+}
+.transactions-table tbody {
+    height: 400px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}
+
+
+table {
+    width: 100%; /* Optional */
+}
+
+
+/* label focus color */
+.input-field input[type=text]:focus + label, .input-field input[type=password]:focus + label {
+    color: #000;
+}
+/* label underline focus color */
+.input-field input[type=text]:focus, .input-field input[type=password]:focus {
+    border-bottom: 1px solid #000;
+    box-shadow: 0 1px 0 0 #000;
+}
+
+.blocknum{width:50px;}
+
+.materialboxed{cursor:pointer;}
+
+.vote-button.red i {color:white !important;}
+.vote-button.blue i {color:white !important;}
+
+/*
+.vote-button {box-shadow: none;}
+.vote-button.red {box-shadow: 0 2px 2px 0 rgba(0,0,0,0.14), 0 1px 5px 0 rgba(0,0,0,0.12), 0 3px 1px -2px rgba(0,0,0,0.2);}
+.vote-button.blue {box-shadow: 0 2px 2px 0 rgba(0,0,0,0.14), 0 1px 5px 0 rgba(0,0,0,0.12), 0 3px 1px -2px rgba(0,0,0,0.2);}
+*/
+
+.vote-button {background: rgba(255, 255, 255, 0.25) !important;z-index:0;}
+.vote-button:hover {background: rgba(255, 255, 255, 0.75) !important;}
+.vote-button:hover i {color:#bdbdbd !important;}
+.vote-button.red:hover i {color:white !important;}
+.vote-button.blue:hover i {color:white !important;}
+.vote-button.red {background-color: #F44336 !important}
+.vote-button.blue {background-color: #2196F3 !important;}
+
+#main_nav.fixednav{position:fixed !important;z-index:10;background:#fff !important;top:0;left:0;right:0;}
+#main_row.fixednav{margin-top:65px;}
+#stats_panel.fixednav{position:fixed;right:0px;}
+
+.modal-form-row {margin-bottom:0;}
+    </style>
+
+    <script>
+$(document).ready(function(){
+    $('ul.tabs').tabs();
+});
+
+$(document).ready(function(){
+    $('.materialboxed').materialbox();
+});
+
+$(document).ready(function(){
+    // Change the selector if needed
+    var $table = $('.transactions-table'),
+	$bodyCells = $table.find('tbody tr:first').children(),
+	colWidth;
+
+    // Get the tbody columns width array
+    colWidth = $bodyCells.map(function() {
+	return $(this).width();
+    }).get();
+
+    // Set the width of thead columns
+    $table.find('thead tr').children().each(function(i, v) {
+	$(v).width(colWidth[i]);
+    });    
+});
+
+
+
+$(document).ready(function(){
+    $("#events_log").scrollTop(9999);
+    //$("#events_log").scrollTop(0);
+    
+    var clone_count = 32;
+    setInterval(function(){
+	if (!document.hidden){
+	    var num = Math.floor(Math.random()*5);
+	    $( "#event_" + num ).clone().attr('id', 'event_' + clone_count++).prependTo( "#events_log" );
+	    $( "#event_" + (clone_count - 1) + " .blocknum a").html("#" + clone_count);
+	    //var od = $("#events_log");
+	    //od.scrollTop(od[0].scrollHeight);
+
+	    if ($("#events_log")[0].scrollHeight >= 9000){
+		$("#events_log tr:nth-child(10)")[0].remove();
+	    }
+	    
+	    var scrollToBottom = false;
+	    if (($("#events_log")[0].scrollHeight - $("#events_log").scrollTop()) <= $("#events_log").outerHeight() * 2) {
+		scrollToBottom = true;
+	    }
+	    //console.log("A " + $("#events_log").scrollTop() + " B " + $("#events_log").outerHeight());
+	    if (scrollToBottom) {
+		//$("#events_log").scrollTop(9999);
+	    }
+	}
+	
+    }, 2100);
+});
+
+
+$(document).ready(function(){
+    $('#modal1').modal({
+	dismissible: true, // Modal can be dismissed by clicking outside of the modal
+	opacity: .5, // Opacity of modal background
+	inDuration: 300, // Transition in duration
+	outDuration: 200, // Transition out duration
+	startingTop: '4%', // Starting top style attribute
+	endingTop: '10%', // Ending top style attribute
+	ready: function(modal, trigger) { // Callback for Modal open. Modal and trigger parameters available.
+	    //alert("Ready");
+	    //console.log(modal, trigger);
+	    $("#image_url").focus();
+	},
+	//complete: function() { alert('Closed'); } // Callback for Modal close
+    });
+});
+
+
+
+										 
+// $(document).ready(function(){
+//   $('.dropdown-button').dropdown({
+//       inDuration: 300,
+//       outDuration: 225,
+//       constrainWidth: false, // Does not change width of dropdown to that of the activator
+//       hover: true, // Activate on hover
+//       gutter: 0, // Spacing from edge
+//       belowOrigin: false, // Displays dropdown below the button
+//       alignment: 'left' // Displays dropdown with edge aligned to the left of button
+//       stopPropagation: false // Stops event propagation
+//     }
+//   );
+// });
+
+$(document).ready(function(){
+    var count_start = 60 * 2.5;
+    var count = count_start;
+
+    function zpad(num, size) {
+	var s = "000000000" + num;
+	return s.substr(s.length-size);
+    }
+
+    function the_timer() {
+	count = count - 1;
+	if (count == -1) {
+            count = count_start;
+            return;
+	}
+
+	var seconds = count % 60;
+	var minutes = Math.floor(count / 60);
+	var hours = Math.floor(minutes / 60);
+	minutes %= 60;
+	hours %= 60;
+
+	if (!hours){
+	    document.getElementById("round_timer").innerHTML = minutes + ":" + zpad(seconds, 2);
+	}
+	else {
+	    document.getElementById("round_timer").innerHTML = hours + ":" + zpad(minutes, 2) + ":" + zpad(seconds, 2);
+	}
+    }
+
+    var counter = setInterval(the_timer, 1000);
+
+});
+
+
+function isScrolledIntoView(el) {
+    var elemTop = el.getBoundingClientRect().top;
+    var elemBottom = el.getBoundingClientRect().bottom;
+
+    var isVisible = (elemTop >= 0) && (elemBottom <= window.innerHeight);
+    return isVisible;
+}
+
+$(document).ready(function(){
+
+    function money_update() {
+	if (!document.hidden){
+	    $('.card-money-outer').each(function (index, value) {
+		if (Math.random() < 0.1){
+		    if (isScrolledIntoView(this)){
+			var amt = (Math.random() * Math.random() * 10) - (Math.random() * Math.random() * 5);
+			$('span',this).html((parseFloat($('span',this).text()) + amt).toFixed(2));
+			//$(this).effect("highlight", {color: "#ddd"}, 2000);
+			
+			if (amt > 0) {
+			    $('.trend-up',this).show().delay(2000).fadeOut(200);
+			    $('.trend-down',this).hide();
+			}
+			else {
+			    $('.trend-up',this).hide();
+			    $('.trend-down',this).show().delay(2000).fadeOut(200);
+			    
+			}
+		    }
+		}
+	    });
+	}
+    }
+
+    var counter = setInterval(money_update, 2100);
+    
+});
+
+
+$(document).ready(function() {
+    $('select').material_select();
+});
+
+										 
+  </script>
+    
+  </head>
+  <body>
+
+    <nav class="nav-extended transparent z-depth-0" id="main_nav">
+	<div class="nav-wrapper">
+	  <a href=""
+	     class="brand-logo red-text text-accent-4">CCCoin</a>
+	  <ul class="tabs">
+            <li class="tab"><a class="active" href="#test1">Trending</a></li>
+            <li class="tab"><a href="#test2" class="">Newest</a></li>
+            <li class="tab"><a href="#test4">Best</a></li>
+	  </ul>
+	  
+	  <a href="#" data-activates="mobile-demo" class="button-collapse" style="display:none;"><i class="material-icons">menu</i></a>
+	  
+	  <ul id="nav-mobile" class="right xhide-on-med-and-down">
+	    <li>
+	      <a onclick="toggle_fixed(1); return false;" class="red-text text-accent-4" id="show_fixed_button">Non-Fixed</a>
+	      <a onclick="toggle_fixed(0); return false;" class="red-text text-accent-4" id="hide_fixed_button" style="display:none;">Fixed</a>
+	      
+	    </li>
+	    <li>
+	      <a onclick="toggle_stats(1); return false;" class="red-text text-accent-4" id="show_stats_button">Stats-Hidden</a>
+	      <a onclick="toggle_stats(0); return false;" class="red-text text-accent-4" style="display:none;" id="hide_stats_button">Stats-Shown</a>
+	    </li>
+            <li><a class="waves-effect waves-light modal-trigger btn btn-floating white"
+		   style="position:static;"
+		   data-target="modal1" href="#modal1"><i class="material-icons black-text text-lighten-1">add</i></a></li>
+            <li><a class="waves-effect waves-light modal-trigger"
+		   id="login_button"
+		   data-target="modal2" href="#modal2">Login</a></li>
+	    <li id="login_or_username_outer">
+	      <!-- Dropdown Trigger -->
+	      <a class="dropdown-button btn white black-text"
+		 id="login_or_username"
+		 href='#'
+		 data-activates="dropdown_loggedin">-----</a>
+	      
+	      <!-- Dropdown Structure -->
+	      <ul id="dropdown_loggedin"
+		  class="dropdown-content black-text">
+		<!-- <li><a href="#!">one</a></li> -->
+		<li><a href="#!" class="black-text">Settings</a></li>
+		<li class="divider"></li>
+		<li><a href="#!" class="black-text" onclick="do_logout(); return false;">Logout</a></li>
+	      </ul>
+        
+	    </li>
+	  </ul>
+	  <ul class="side-nav" id="mobile-demo">
+            <li><a href="sass.html">Sass</a></li>
+            <li><a href="badges.html">Components</a></li>
+            <li><a href="badges.html">Components</a></li>
+	  </ul>
+	</div>
+	<div class="nav-content">
+	  <ul class="xtabs" style="display:none;">
+            <li class="tab"><a class="active" href="#test1">Rising</a></li>
+            <li class="tab"><a href="#test2">Newest</a></li>
+            <li class="tab"><a href="#test4">Best</a></li>
+	  </ul>
+	</div>
+      </nav>
+
+    <div class="container" style="margin:0;padding-left:10px"> <!-- No idea why this padding adjustment is necessary... -->
+
+      
+      <div class="row" id="main_row">
+	<div class="col s12" id="main_panel"> <!-- l9 m8 -->
+
+	  <!-- START TAB -->
+	  <div id="test1" class="">
+
+	    <div class="row" style="margin-top:0;">
+
+	      {% set the_images = ['http://cdn.mediachainlabs.com/hh_1024x1024/e67/e678ba048045604d38acd690d9947e69.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/820/820340621f49a40937008ce63513e818.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/20b/20bb014a25077fcf77d63b93667980fb.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/102/102ccf5f8c0188f6cbd0fc1b291482b7.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/a30/a30390f1cf723a9a486d05ee919e60dc.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/9e1/9e111af962c0b9fd23488adb62f46b89.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/3b2/3b2c4ef1a6effa024418098f88570c12.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/198/198bc6ad8d7baa0bed2e0b92008dd9c0.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/bcb/bcbe73e3bd3c0d34230ca11782f7525e.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/489/48903fcb8a3e1e35d6b5c2affb1bed9d.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/f97/f9718953454b8f9265bd79b3f6fe7a0c.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/114/114298c126aa43d40bb4f5d28fc94823.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/d00/d0026e733cbbb4f85115f995435b9dd8.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/741/74145db5a026e08b0f3d0d1ffa11b6fc.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/a37/a37cac00ac5879517414bf3eec83efb2.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/dd6/dd65487437594c811cd895140c855a73.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/870/87054d7165e7aee7c65ab678cc3df65f.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/c1d/c1de8f4a872dd7462119aaf1ce425cae.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/01d/01d7fc66654297fda0a4b8160f8a92f2.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/838/838564502cd7f5f6a9866a90390e31ca.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/09e/09ee127367e693345a2dcf821e7feedf.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/904/904a57b3aa16e97f4122979dc131a1ab.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/c3c/c3c469861300b18624c0946e7a3d3b0d.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/0a4/0a4b35910756c897f09902ec90947763.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/b8d/b8d723b14d6d1f2b36d39286ac096e89.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/34d/34da023319ed1013ce311da6895f1b19.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/173/17368c4e12f93f6bc9b4fa6457e84290.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/164/1642db98287e4416e9ca27a5d6e739a5.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/71a/71aa0ccd08a033908aa0922b172b34cc.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/e9c/e9cdebff16f551d0590c415ef56a956f.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/d18/d182f1f27e87d582f2b27eab5d9fb2bf.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/36d/36d71cd3ebfdd38a6d35ab1373f0b8a0.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/c64/c649cdf73d306191993e8ff5155fea4a.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/cd9/cd9f82279af9e225cfddba8a1b0815d6.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/e98/e98919297b1b04814d2d7df8d111324d.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/f49/f491619408546eed5c44f7bb5b6d02bf.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/3a1/3a11d9dda63caf7d7c4ec4f1f51928b3.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/f23/f23db50f9f727a449425262b32fe5aaf.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/c54/c5420b198975a2dea3a31f88760016e4.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/1c6/1c647b7b97b9b54fea7fb278241109d7.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/9b7/9b7d1b19c5be3486e75f91fbec896b88.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/b11/b115df2ff85790f8d2ac52a4859af3ce.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/a63/a638d98e920356aad53d533fa4dccb22.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/482/482aa6a666c6d58a8024b00f558bfa6c.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/643/643b371e8e3a9bd061ec7810a98c89af.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/384/384f3b9726c831dc59d01ba27a799aad.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/308/308a06548995a27b7a56b2f9ae4d37c1.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/ca3/ca3d51ed9c4307278ffbd0e0436251d3.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/301/30159cdda5f701c33f3046a4df17ff86.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/fd9/fd9591aa616e105a9750d01cf0fb0554.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/158/1581e858c5bff62f7023a1abc315ab8c.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/f3e/f3eae751bdd94bfff384d5129dc9e457.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/89a/89acf423a890ada98d23d1eb34cffa6b.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/0d1/0d1e49fa033a7e6b3fd58e0e17d8b680.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/28a/28ab4aad7161044a86f226aa96b7a5bb.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/113/11381a1bb306484443e236c45d75535c.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/cf5/cf595b63cacaa61162eee53326e1ec26.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/0f9/0f9e78a37152c8be919ee705575df71c.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/943/943a9bdc010a0e8eb823e4e0bcac3ee1.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/4aa/4aad4e5bc5e7fa55779337bb561d409e.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/3ec/3ec95e374650107ba65ea39602003dff.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/a36/a36f473e37d65b2aee55648c9aff9afa.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/c7a/c7a2be07d45ee58cc939acadbf1244be.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/a9a/a9a83854ca557460b990d89589585f8e.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/21e/21ef57e4e0b802c19cee4399aa72672d.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/da3/da38cc107a79aa86cc121c0289b5c21d.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/44b/44b7d5e957145e582b8a8d0902cfdefa.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/c21/c214be287672fffe2fc3afe152919de0.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/02d/02d6516cb49a9ebf2d5fd3a1a589de42.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/0b0/0b0b6cdab933fb1cdac772e8b411ed95.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/0bd/0bd03c2d1688f7e47b3b9dc2d886696e.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/b04/b0480419a8f84b7a02dbd9a384677a54.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/7f7/7f73334ea2a4740ceebfc9c92b831c67.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/c50/c50189aa530d613a0d5ee337b5d798db.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/a0a/a0a49223ae35d63f94ae4ba2eb6d76a7.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/25d/25d3edf789c30d06b92d9dd79c238ae6.jpg',] %}
+	      
+	      {% for item_id in xrange(102) %}
+
+	      {% set item_id = str(item_id) %}
+	      
+	      <!-- START CARD -->
+	      <div class="col s12 m4 l2 card_item">
+		<div class="card">
+		  <div class="card-image">
+		    <img class="materialboxed"
+			 data-caption="A picture of some deer and tons of trees"
+			 src="{{ choice(the_images) }}"
+			 >
+		    <span class="card-title">A picture of some deer and tons of trees</span>
+		  </div>
+		  <div class="card-content">
+		    {% if session %}
+		    {% set is_up = (the_db['USER_PENDING_VOTES'].get((session['pub'], item_id)) == 1) or (the_db['USER_VOTES'].get((session['pub'], item_id)) == 1) %}
+		    {% else %}
+		    {% set is_up = False %}
+		    {% end %}
+		    <a class="vote-button btn-floating btn-floating-2 halfway-fab waves-effect waves-light {{ is_up and 'red' or 'white' }}"
+		       id="vote_{{ item_id }}_1"
+		       onclick="do_vote('{{ item_id }}',1); return false;"
+		       style="bottom:auto;top:-40px;"><i class="material-icons grey-text text-lighten-2">thumb_up</i></a>
+		    {% if session %}
+		    {% set is_down = (the_db['USER_PENDING_VOTES'].get((session['pub'], item_id)) == -1) or (the_db['USER_VOTES'].get((session['pub'], item_id)) == -1) %}
+		    {% else %}
+		    {% set is_down = False %}
+		    {% end %}
+		    
+		    <a class="vote-button btn-floating btn-floating-1 halfway-fab waves-effect waves-light {{ is_down and 'blue' or 'white' }}"
+		       id="vote_{{ item_id }}_-1"
+		       onclick="do_vote('{{ item_id }}',-1); return false;"
+		       style="bottom:auto;top:-40px;"><i class="material-icons grey-text text-lighten-2">thumb_down</i></a><!-- keyboard_arrow_down -->
+		    <div class="row" style="margin:0;">
+		      <div class="col s12 m12">
+			<a href="" class="red-text text-accent-4">{{ choice(['alvin','alan','johnathan']) }}</a>
+			<span class="grey-text">{{ randint(1,12)}}{{ choice(['h','m','s'] )}} ago</span>
+		      </div>
+		      <div class="col s12 m12">
+			<span class="card-money-outer">
+			  $<span id="vote_{{ item_id }}_pow">{{ randint(0, 150) }}.{{ '%02d' % randint(0,99) }}</span>
+			  <i class="trend-up material-icons red-text text-lighten-1" style="font-size:15px;display:none;">arrow_upward</i>
+			  <i class="trend-down material-icons blue-text text-lighten-1" style="font-size:15px;display:none;">arrow_downward</i>
+			</span>
+			<!-- &#8353; -->
+			{% if session %}
+			{% set is_flagged = (the_db['USER_PENDING_FLAGS'].get((session['pub'], item_id)) == 2) or (the_db['USER_FLAGS'].get((session['pub'], item_id)) == 2) %}
+			{% else %}
+			{% set is_flagged = False %}
+			{% end %}
+			<a href="#"
+			   onclick="do_vote('{{ item_id }}',2); return false;"
+			   style="float:right;"><i id="vote_{{ item_id }}_2"
+						   class="material-icons {{ is_flagged and 'yellow-text' or 'grey-text' }} text-lighten-3 white"
+						   >flag</i></a>
+		      </div>
+		    </div>
+		  </div>
+		</div>
+	      </div>
+	      <!-- END CARD -->
+	      {% end %}
+
+	    </div>
+
+	    
+	    <ul class="pagination">
+	      <li class="disabled"><a href="#!"><i class="material-icons">chevron_left</i></a></li>
+	      <li class="active"><a href="#!">1</a></li>
+	      <li class="waves-effect"><a href="#!">2</a></li>
+	      <li class="waves-effect"><a href="#!">3</a></li>
+	      <li class="waves-effect"><a href="#!">4</a></li>
+	      <li class="waves-effect"><a href="#!">5</a></li>
+	      <li class="waves-effect"><a href="#!"><i class="material-icons">chevron_right</i></a></li>
+	    </ul>
+
+	  </div>
+	  <!-- END TAB -->
+
+	  
+	  <div id="test2" class="">Test 2</div>
+	  <div id="test4" class="">Test 4</div>
+
+
+	</div>
+	
+	<div class="col l3 m4 s12" id="stats_panel"  style="display:none;">
+	  <!-- <h5 class="left-align"><a href="#" class="black-text">Leaders</a></h5> -->
+
+	  	  <table>
+	    <thead>
+	      <tr>
+		<th data-field="id">Leading</th><th data-field="id" class="grey-text" style="text-align:right;font-weight:normal;" colspan="2">
+		  <span id="round_timer">3:23</span> remaining
+		    <!-- <a class="dropdown-button btn btn-small white black-text" -->
+		    <!--    href='#' -->
+		    <!--    data-activates="dropdown1">3:23 remaining</a> -->
+		    <!-- <ul id='dropdown1' class='dropdown-content'> -->
+		    <!--   <li><a href="#!">Current Round</a></li> -->
+		    <!--   <li class="divider"></li> -->
+		    <!--   <li><a href="#!">5</a></li> -->
+		    <!--   <li><a href="#!">4</a></li> -->
+		    <!-- </ul> -->
+
+		</th>
+	      </tr>
+	    </thead>
+	    <tbody>
+	      <tr>
+		<td style="width:33%;">
+		  <div class="progress grey lighten-2">
+		    <div class="determinate red" style="width: 70%"></div>
+		  </div>
+		</td>
+
+		<td>
+		  <div class="small-card-image">
+		  <img class="materialboxed"
+		       data-caption="A picture of some deer and tons of trees"
+		       src="http://cdn.mediachainlabs.com/hh_1024x1024/d21/d217ee70e20c25045284cc14cb8d8685.jpg"
+		       >
+		  </div>
+		</td>
+		<td style="width:33%;">44.23 LOCK</td></tr>
+
+	      <tr>
+		<td style="width:33%;">
+		  <div class="progress grey lighten-2">
+		    <div class="determinate red" style="width: 33%"></div>
+		  </div>
+		</td>
+
+		<td>
+		  <div class="small-card-image">
+		  <img class="materialboxed"
+		       data-caption="A picture of some deer and tons of trees"
+		       src="http://cdn.mediachainlabs.com/hh_1024x1024/e67/e678ba048045604d38acd690d9947e69.jpg"
+		       >
+		  </div>
+		</td>
+		
+		<td style="">21.14 LOCK</td></tr>
+
+	      <tr>
+		<td style="width:33%;">
+		  <div class="progress grey lighten-2">
+		    <div class="determinate red" style="width: 15%"></div>
+		  </div>
+		</td>
+		
+		<td>
+		  <div class="small-card-image">
+		  <img class="materialboxed"
+		       data-caption="A picture of some deer and tons of trees"
+		       src="http://cdn.mediachainlabs.com/hh_1024x1024/1bf/1bffbe90dce6f34e0e7e2b3d537e656d.jpg"
+		       >
+		  </div>
+		</td>
+		
+		<td style="">10.85 LOCK</td></tr>
+
+	      <tr>
+		<td style="width:33%;">
+		  <div class="progress grey lighten-2">
+		    <div class="determinate red" style="width: 8%"></div>
+		  </div>
+		</td>
+
+		<td>
+		  <div class="small-card-image">
+		  <img class="materialboxed"
+		       data-caption="A picture of some deer and tons of trees"
+		       src="http://cdn.mediachainlabs.com/hh_1024x1024/e6e/e6e1e474f1ace73f09eec6997676fbfb.jpg"
+		       >
+		  </div>
+		</td>
+		
+		<td style="">5.01 LOCK</td></tr>
+
+	      <tr>
+		<td style="width:33%;">
+		  <div class="progress grey lighten-2">
+		    <div class="determinate red" style="width: 6%"></div>
+		  </div>
+		</td>
+
+
+		<td>
+		  <div class="small-card-image">
+		  <img class="materialboxed"
+		       data-caption="A picture of some deer and tons of trees"
+		       src="http://cdn.mediachainlabs.com/hh_1024x1024/9b6/9b66ed3f25188ed35fa3dfc0a9a6bcf1.jpg"
+		       >
+		  </div>
+		</td>
+		
+		<td style="">4.88 LOCK</td></tr>
+
+
+
+	    </tbody>
+	  </table>
+
+
+	  <table>
+            <thead>
+              <tr>
+		<th data-field="id" colspan="2">Users</th>
+		<!-- <th data-field="name" colspan="2" class="align-center">Balances</th> -->
+		<!-- <th data-field="price">Balances</th> -->
+              </tr>
+            </thead>
+
+            <tbody>
+              <tr>
+		<td><a href="" class="red-text text-accent-4">alvin</a></td>
+		<td>2034.32 &#8353;</td>
+		<td>0.87 LOCK</td>
+              </tr>
+              <tr>
+		<td><a href="" class="red-text text-accent-4">alan</a></td>
+		<td>234.324 &#8353;</td>
+		<td>3.76 LOCK</td>
+              </tr>
+              <tr>
+		<td><a href="" class="red-text text-accent-4">johnathan</a></td>
+		<td>234.32 &#8353;</td>
+		<td>7.00 LOCK</td>
+              </tr>
+            </tbody>
+	  </table>
+
+
+	  <table style="display:none;">
+            <thead>
+              <tr>
+		<th data-field="id" colspan="2">Stats</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              <tr>
+		<td>52</td>
+		<td>Block Number</td>
+              </tr>
+              <tr>
+		<td>5243</td>
+		<td>Upvotes this block</td>
+              </tr>
+              <tr>
+		<td>43</td>
+		<td>Downvotes this block</td>
+              </tr>
+              <tr>
+		<td>3:12</td>
+		<td>Time to next block</td>
+              </tr>
+            </tbody>
+	  </table>
+
+
+
+	  <table class="z-depth-0 transactions-table">
+            <thead>
+              <tr>
+		<th data-field="id" colspan="2">Events</th>
+		<!-- <th data-field="id" style="width:50px;">#</th> -->
+		<!-- <th data-field="name">Event</th> -->
+              </tr>
+            </thead>
+
+            <tbody id="events_log">
+              <tr id="event_1">
+		<td class="blocknum"><a href="" class="black-text">#32</a></td>
+		<td>
+		  <a href="" class="red-text text-accent-4"><i class="material-icons">thumb_up</i></a>
+		  from
+		  <a href="" class="red-text text-accent-4">bob</a>
+		  on
+		  <a href="" class="red-text text-accent-4">A picture of some deer and tons of trees</a></td>
+              </tr>
+              <tr id="event_2">
+		<td><a href="" class="black-text">#32</a></td>
+		<td>
+		  <a href="" class="black-text"><i class="material-icons">flag</i></a>
+		  from
+		  <a href="" class="red-text text-accent-4">jerry</a>
+		  on
+		  <a href="" class="red-text text-accent-4">big moose</a></td>
+              </tr>
+              <tr id="event_3">
+		<td><a href="" class="black-text">#32</a></td>
+		<td>
+		  <a href="" class="red-text text-accent-4"><i class="material-icons">thumb_up</i></a>
+		  from
+		  <a href="" class="red-text text-accent-4">alan</a>
+		  on
+		  <a href="" class="red-text text-accent-4">bad frog</a></td>
+              </tr>
+              <tr id="event_4">
+		<td><a href="" class="black-text">#32</a></td>
+		<td>
+		  <a href="" class="red-text text-accent-4"><i class="material-icons">thumb_up</i></a>
+		  from
+		  <a href="" class="red-text text-accent-4">ashley</a>
+		  on
+		  <a href="" class="red-text text-accent-4">A picture of some deer and tons of trees</a>
+		</td>
+              </tr>
+              <tr id="event_5">
+		<td><a href="" class="black-text">#32</a></td>
+		<td>
+		  <a href="" class="red-text text-accent-4"><i class="material-icons">thumb_up</i></a>
+		  from
+		  <a href="" class="red-text text-accent-4">ashley</a>
+		  on
+		  <a href="" class="red-text text-accent-4">A picture of some deer and tons of trees</a></td>
+              </tr>
+            </tbody>
+	  </table>
+
+	  
+	</div>
+      </div>
+    </div>
+
+    
+
+    <!-- Modal 1 -->
+    <div id="modal1" class="modal">
+      <form id="submit_form" class="col s12">
+	<div class="modal-content">
+	  <h4>Submit Image</h4>
+
+	  <div class="row">
+	  <!-- <div class="file-field input-field"> -->
+	  <!--   <div class="btn white black-text"> -->
+	  <!-- 	<span>File</span> -->
+	  <!-- 	<input type="file"> -->
+	  <!--   </div> -->
+	  <!--   <div class="file-path-wrapper"> -->
+	  <!-- 	<input class="file-path validate" type="text"> -->
+	  <!--   </div> -->
+	  <!-- </div> -->
+	  
+          <div class="row modal-form-row">
+            <div class="input-field col s12">
+	      <input id="image_url" type="text" class="validate">
+	      <label for="image_url">Direct Image URL</label>
+            </div>
+          </div>
+	  
+	  <div class="row modal-form-row" style="display:none;">
+	    <div class="input-field col s12">
+	      <select class="black-text">
+		<option value="" disabled selected>Choose your option</option>
+		<option value="1">None (All rights reserved)</option>
+		<option value="2">Public Domain Work</option>
+		<option value="3">Public Domain Dedication (CC0)</option>
+		<option value="4">Attribution-NonCommercial-ShareAlike Creative Commons</option>
+		<option value="5">Attribution-NonCommercial Creative Commons</option>
+		<option value="6">Attribution-NonCommercial-NoDerivs Creative Commons</option>
+		<option value="7">Attribution Creative Commons</option>
+		<option value="8">Attribution-ShareAlike Creative Commons</option>
+		<option value="9">Attribution-NoDerivs Creative Commons</option>
+	      </select>
+	      <label>License</label>
+	    </div>
+	  </div>
+	    
+	  
+	  <div class="row modal-form-row" style="display:none;">
+            <div class="input-field col s12">
+	      <input id="artist_name" type="text" class="validate">
+	      <label for="artist_name">Artist Name</label>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="input-field col s12">
+	      <input id="image_title" type="text" class="validate">
+	      <label for="image_title">Title</label>
+            </div>
+          </div>
+
+	  <p id="submit_error_text" class="red-text text-darken-2" style="margin-bottom:0;"></p>
+
+	</div>
+	</div>
+	<div class="modal-footer">
+      <input type="submit" class=" modal-action modal-close waves-effect waves-red btn-flat" value="Submit">
+    </div>
+    </form>
+</div>
+
+    <!-- Modal 2 -->
+    <div id="modal2" class="modal">
+      <form class="col s12" id="login_form">
+	<div class="modal-content">
+	  <h4>Login / Signup</h4>
+
+	  <div class="row" style="margin-bottom:0;">
+	    <div class="col s12">
+	      <!-- START LOGIN -->
+	      <div class="row" style="margin-bottom:0;">
+		<div class="row modal-form-row">
+		  <div class="input-field col s12">
+		    <input id="login_username" type="text" class="xvalidate">
+		    <label for="login_username">Username or WIF</label>
+		  </div>
+		</div>
+		<div class="row" style="margin-bottom:0;">
+		  <div class="input-field col s12">
+		    <input id="login_password" type="password" class="xvalidate">
+		    <label for="login_password">Password</label>
+		  </div>
+		</div>       
+	      </div>
+	      <!-- END LOGIN -->
+	      <p id="login_error_text" class="red-text text-darken-2" style="margin-bottom:0;"></p>
+	    </div>
+	  </div>
+	</div>
+	<div class="modal-footer">
+	  <input type="submit" class="waves-effect waves-red btn-flat" value="Login / Signup">
+	  <!-- modal-action modal-close  -->
+	</div>
+      </form>
+    </div>
+    
+  </body>
+</html>
