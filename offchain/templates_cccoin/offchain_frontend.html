@@ -417,7 +417,7 @@ $(document).ready(function() {
 		  </div>
 		  <div class="card-content">
 		    {% if session %}
-		    {% set is_up = (the_db['USER_PENDING_VOTES'].get((session['pub'], item_id)) == 1) or (the_db['USER_VOTES'].get((session['pub'], item_id)) == 1) %}
+		    {% set is_up = (pending_db['votes'].get((session['pub'], item_id)) == 1) or (confirmed_db['votes'].get((session['pub'], item_id)) == 1) %}
 		    {% else %}
 		    {% set is_up = False %}
 		    {% end %}
@@ -426,7 +426,7 @@ $(document).ready(function() {
 		       onclick="do_vote('{{ item_id }}',1); return false;"
 		       style="bottom:auto;top:-40px;"><i class="material-icons grey-text text-lighten-2">thumb_up</i></a>
 		    {% if session %}
-		    {% set is_down = (the_db['USER_PENDING_VOTES'].get((session['pub'], item_id)) == -1) or (the_db['USER_VOTES'].get((session['pub'], item_id)) == -1) %}
+		    {% set is_down = (pending_db['votes'].get((session['pub'], item_id)) == -1) or (confirmed_db['votes'].get((session['pub'], item_id)) == -1) %}
 		    {% else %}
 		    {% set is_down = False %}
 		    {% end %}
@@ -448,7 +448,7 @@ $(document).ready(function() {
 			</span>
 			<!-- &#8353; -->
 			{% if session %}
-			{% set is_flagged = (the_db['USER_PENDING_FLAGS'].get((session['pub'], item_id)) == 2) or (the_db['USER_FLAGS'].get((session['pub'], item_id)) == 2) %}
+			{% set is_flagged = (pending_db['flags'].get((session['pub'], item_id)) == 2) or (confirmed_db['flags'].get((session['pub'], item_id)) == 2) %}
 			{% else %}
 			{% set is_flagged = False %}
 			{% end %}

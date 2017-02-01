@@ -266,7 +266,7 @@ function blind_something(votes_string, num_items, item_type){
     */
     
     console.log('START blind_something()', num_items, item_type);
-    
+
     blind_hash = ethUtils.sha256(Buffer(votes_string));
     
     dd2 = JSON.stringify({command:'blind',

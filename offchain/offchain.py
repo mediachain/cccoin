@@ -1,188 +1,46 @@
 #!/usr/bin/env python
 
 """
-
-personal_importRawKey
-
-
-1) Generate key pairs:
-   - Posting pair
-   - Voting pair
-   - Wallet pair
-   - user_id is wallet address
-2) User imports his keys into web node. / keys created upon signup.
-3) 
-
-
-A) Web node usually retains users' private keys (unless optionally imported / exported), HTTP cookies and passwords used for authentication.
-B) User always retains his private keys, all signing is done before passing the messages to the Web node, no additional authentication used.
-
----
-
-- generate user keys, store in external keystore
-- sign all transactions off-chain, submit under sponsor's keys
-- 
-
-password.value
-
-https://github.com/steemit/steemit.com/blob/ded8ecfcc9caf2d73b6ef12dbd0191bd9dbf990b/shared/ecc/test/KeyFormats.js
-
-BEST:
-https://github.com/steemit/steemit.com/blob/ded8ecfcc9caf2d73b6ef12dbd0191bd9dbf990b/app/redux/UserSaga.js#L109
-
------
-CCCoin dApp.
-
-This version uses a single off-chain witness for minting and rewards distribution.
-The witness can also be audited by anyone with this code and access to the blockchain.
-
-Version 2 will replace the single auditable witness with:
-- Comittee of witnesses that are voted on by token holders. The witnesses then vote on the rewards distribution.
-- 100% on-chain rewards computation in smart contracts.
-
----- INSTALL:
-
-#sudo add-apt-repository ppa:ethereum/ethereum
-sudo add-apt-repository ppa:ethereum/ethereum-dev
-sudo apt-get update
-
-curl -sL https://deb.nodesource.com/setup_7.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-sudo npm install -g ethereumjs-testrpc
-
-sudo npm install -g solc
-
-sudo ln -s /usr/bin/nodejs /usr/bin/node
-
-#pip install ethereum
-#pip install ethereum-serpent
-
-pip install py-solc
-pip install ethjsonrpc
-
----- RUNNING:
-
-testrpc -p 9999
-
-python offchain.py deploy_dapp ## first time only
-python offchain.py witness
-python offchain.py web
-
----- GETH:
-
-geth --fast --cache=1024 --rpc --testnet --datadir /datasets/ethereum_testnet
-
-
----- EXAMPLES:
-
-
 """
 
+
+DATA_DIR = 'cccoin_conf/'
+CONTRACT_ADDRESS_FN = DATA_DIR + 'cccoin_contract_address.txt'
+
+
+import bitcoin as btc
+
+from ethjsonrpc.utils import hex_to_dec, clean_hex, validate_block
+from ethjsonrpc import EthJsonRpc
+
+import ethereum.utils
+
+import binascii
+
+import json
 
 from os import mkdir, listdir, makedirs, walk, rename, unlink
 from os.path import exists,join,split,realpath,splitext,dirname
 
-
-## TODO - use database:
-
-DATA_DIR = 'cccoin_conf/'
-CONTRACT_ADDRESS_FN = DATA_DIR + 'cccoin_contract_address.txt'
-USER_DB_FN = DATA_DIR + 'cccoin_users.json'
-
-
-######## Primitive, single-process key store:
-
-## TODO - use a KDF for extra protection of master password?
-
-import getpass
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
-from random import randint
-import json
-from os import rename
+from random import randint, choice
+from os import urandom
 
-class PoorMansKeystore():
-    def __init__(self,
-                 key = False,
-                 fn = USER_DB_FN,
-                 autosave = True,
-                 ):
-        
-        if key is False:
-            ## Prompt interactively:
-            key = getpass.getpass()
-            
-        self.key = key
-        self.fn = fn
-        self.accounts = {} ## {username:password}
-        self.autosave = autosave
-        self._load()
-    
-    def _load(self):
-
-        print ('LOADING...', self.fn)
-        
-        self.user_db_password = '1234'#getpass.getpass()
-
-        if not exists("encrypted.bin"):
-            self.accounts = {}
-        else:
-            with open("encrypted.bin", "rb") as ff:
-                nonce, tag, ciphertext = [ff.read(x) for x in (16, 16, -1)]
-
-            cipher = AES.new(self.key, AES.MODE_EAX, nonce)
-            data = cipher.decrypt_and_verify(ciphertext, tag)
-
-            self.accounts = json.loads(data)
-
-        print ('LOADED', len(self.accounts))
-    
-    def _save(self):
-        
-        print ('SAVING...', self.fn)
-        
-        data = json.dumps(self.accounts)
-        
-        cipher = AES.new(key, AES.MODE_EAX)
-        
-        ciphertext, tag = cipher.encrypt_and_digest(data)
-
-        fn_temp = self.fn + '_temp_' + str(randint(1,10000000000))
-        
-        with open(fn_temp, "wb") as ff:
-            for d in (cipher.nonce, tag, ciphertext):
-                ff.write(d)
-        
-        rename(fn_temp, self.fn)
-        
-        print ('SAVED')
-    
-    def get_password(self, username, default = False):
-        return self.accounts.get(username, False)
-    
-    def set_password(self, username, password):
-        self.accounts[username] = password
-        
-        if self.autosave:
-            self._save()
-
-
+from collections import Counter
 
 ######## Ethereum parts:
 
-from ethjsonrpc import EthJsonRpc
-import json
 
 # main_contract_code = \
 # """
 # pragma solidity ^0.4.6;
 
-# contract CCCoin {
+# contract CCCoin payable {
 #     /* Used for vote logging of votes, tok lockup, etc. */
-#     event LogMain(bytes);
+#     event addLog(bytes);
 #     function addLog(bytes val) { 
-#         LogMain(val);
+#         addLog(val);
 #     }
 # }
 # """
@@ -222,10 +80,10 @@ contract mortal is owned {
 
 contract TokFactory is owned, mortal{ 
 
-     event LogMain(bytes); 
+     event TheLog(bytes); 
 
-     function addLog(bytes val) {
-         LogMain(val);
+     function addLog(bytes val) payable {
+         TheLog(val);
      }
 
     mapping(address => address[]) public created;
@@ -523,10 +381,13 @@ contract Tok is StandardToken{
 }
 """
 
+
+
 class ContractWrapper:
     
     def __init__(self,
-                 events_callback,
+                 the_code,
+                 events_callback = False,
                  rpc_host = '127.0.0.1',
                  rpc_port = 9999, ## 8545,
                  confirm_states = {'PENDING':0,
@@ -546,6 +407,8 @@ class ContractWrapper:
           - `contract_address` contract address, from previous `deploy()` call.
         """
 
+        self.the_code = the_code
+        
         self.loop_block_num = -1
         
         self.confirm_states = confirm_states
@@ -574,13 +437,13 @@ class ContractWrapper:
     def deploy(self):
         print ('DEPLOYING_CONTRACT...')        
         # get contract address
-        xx = self.c.eth_compileSolidity(main_contract_code)
+        xx = self.c.eth_compileSolidity(self.the_code)
         #print ('GOT',xx)
         compiled = xx['code']
         contract_tx = self.c.create_contract(self.c.eth_coinbase(), compiled, gas=3000000)
-        self.contract_address = self.c.get_contract_address(contract_tx)
+        self.contract_address = str(self.c.get_contract_address(contract_tx))
         print ('DEPLOYED', self.contract_address)
-        #self.init_logs_filter()
+        return self.contract_address
 
     def loop_once(self):
         
@@ -599,22 +462,22 @@ class ContractWrapper:
         https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_newfilter
         """
         
-        self.latest_block_num = int(self.c.eth_blockNumber(), 16)
+        self.latest_block_num = self.c.eth_blockNumber()
 
         for do_state in ['CONFIRMED',
-                         'PENDING',
+                         #'PENDING',
                          ]:
             
             self.latest_block_num_confirmed = max(0, self.latest_block_num - self.confirm_states[do_state])
             
-            from_block = self.latest_block_num_done
+            from_block = max(1,self.latest_block_num_done)
             
             to_block = self.latest_block_num_confirmed
             
             got_block = 0
             
-            params = {'fromBlock': from_block,
-                      'toBlock': to_block,
+            params = {'fromBlock': '0x01',#ethereum.utils.int_to_hex(from_block),
+                      'toBlock': ethereum.utils.int_to_hex(to_block),
                       'address': self.contract_address,
                       }
             
@@ -624,20 +487,29 @@ class ContractWrapper:
             
             print ('eth_getFilterChanges', self.filter)
             
-            msgs = self.c.eth_getFilterChanges(self.filter)
+            msgs = self.c.eth_getFilterLogs(self.filter)
             
-            print ('GOT', len(msgs))
+            print ('POLL_INCOMING_GOT', len(msgs))
             
             for msg in msgs:
                 
-                got_block = int(receipt['blockNumber'], 16)
-
-                self.events_callback((msg, 'todo', do_state))
+                got_block = ethereum.utils.parse_int_or_hex(msg['blockNumber'])
+                
+                self.events_callback(msg = msg, receipt = False, confirm_level = do_state)
 
                 self.latest_block_num_done = max(0, max(self.latest_block_num_done, got_block - 1))
         
             
-    def send_transaction(self, foo, args, callback = False, send_from = False, block = False):
+    def send_transaction(self,
+                         foo,
+                         args,
+                         callback = False,
+                         send_from = False,
+                         block = False,
+                         gas = False,
+                         gas_price = 100,
+                         value = 100000000000,
+                         ):
         """
         1) Attempt to send transaction.
         2) Get first confirmation via transaction receipt.
@@ -645,22 +517,37 @@ class ContractWrapper:
         
         https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_sendtransaction
         """
-        
-        self.latest_block_num = int(self.c.eth_blockNumber(), 16)
-        
+
         if send_from is False:
             send_from = self.c.eth_coinbase()
         
         send_to = self.contract_address 
+
+        print ('====TRANSACTION')
+        print ('send_from', send_from)
+        print ('send_to', send_to)
+        print ('foo', foo)
+        print ('args', args)
+        #print ('gas', gas)
         
-        tx = self.c.call_with_transaction(send_from, send_to, foo, args)
+        tx = self.c.call_with_transaction(send_from,
+                                          send_to,
+                                          foo,
+                                          args,
+                                          gas = gas,
+                                          gas_price = gas_price,
+                                          value = value,
+                                          )
         
         if block:
             receipt = self.c.eth_getTransactionReceipt(tx) ## blocks to ensure transaction is mined
+            #print ('GOT_RECEIPT', receipt)
             #if receipt['blockNumber']:
-            #    self.latest_block_number = max(int(receipt['blockNumber'],16), self.latest_block_number)
+            #    self.latest_block_number = max(ethereum.utils.parse_int_or_hex(receipt['blockNumber']), self.latest_block_number)
         else:
             self.pending_transactions[tx] = (callback, self.latest_block_num)
+
+        self.latest_block_num = self.c.eth_blockNumber()
         
         return tx
 
@@ -678,7 +565,7 @@ class ContractWrapper:
             receipt = self.c.eth_getTransactionReceipt(tx)
             
             if receipt['blockNumber']:
-                actual_block_number = int(receipt['blockNumber'],16)
+                actual_block_number = ethereum.utils.parse_int_or_hex(receipt['blockNumber'])
             else:
                 ## TODO: wasn't confirmed after a long time.
                 actual_block_number = False
@@ -707,12 +594,12 @@ def deploy_contract(via_cli = False):
     
     fn = CONTRACT_ADDRESS_FN
     
-    assert not exists(fn), ('Delete this file first:', fn)
+    assert not exists(fn), ('File with contract address already exists:', fn)
     
     if not exists(DATA_DIR):
         mkdir(DATA_DIR)
     
-    cont = ContractWrapper()
+    cont = ContractWrapper(main_contract_code)
     
     addr = cont.deploy()
     
@@ -722,15 +609,13 @@ def deploy_contract(via_cli = False):
     print ('DONE', addr, '->', fn)
 
 ############### Utils:
-
-from os import urandom
     
 def dumps_compact(h):
-    print ('dumps_compact',h)
+    #print ('dumps_compact',h)
     return json.dumps(h, separators=(',', ':'), sort_keys=True)
 
 def loads_compact(d):
-    print ('loads_compact',d)
+    #print ('loads_compact',d)
     r = json.loads(d)#, separators=(',', ':'))
     return r
 
@@ -775,7 +660,7 @@ class SharedCounter(object):
         return self.count.value
 
 
-############## Shared among all forked sub-processes:
+############## Simple in-memory DB, to start:
 
 RUN_ID = get_random_bytes(32).encode('hex')
 
@@ -785,14 +670,6 @@ manager = multiprocessing.Manager()
 
 LATEST_NONCE = manager.dict() ## {api_key:nonce}
 
-USER_VOTES = manager.dict() ## {public_key:set()}          ## Received via blockchain.
-USER_PENDING_VOTES = manager.dict() ## {public_key:set()}  ## Received via HTTP.
-
-USER_FLAGS = manager.dict() ## {public_key:set()}          ## Received via blockchain.
-USER_PENDING_FLAGS = manager.dict() ## {public_key:set()}  ## Received via HTTP.
-
-USER_DB = manager.dict() ## {'public_key':user_info}
-
 CHALLENGES_DB = manager.dict() ## {'public_key':challenge}
 
 SEEN_USERS_DB = manager.dict() ## {'public_key':1}
@@ -800,42 +677,361 @@ SEEN_USERS_DB = manager.dict() ## {'public_key':1}
 
 TEST_MODE = True
 
-the_db = {'USER_VOTES':USER_VOTES,
-          'USER_PENDING_VOTES':USER_PENDING_VOTES,
-          'USER_FLAGS':USER_FLAGS,
-          'USER_PENDING_FLAGS':USER_PENDING_FLAGS,
-          }
+## Web write to pending DB:
 
-############### Load keypair key store:
+pending_db = {'votes':manager.dict(), ## {(pub_key, item_id):direction},
+              'flags':manager.dict(), ## {(pub_key, item_id):direction},
+              'posts':manager.dict(), ## {post_id:post}
+              }
 
-keystore_users_fn = 'keystore_users.json'
+## Rewards & Auditors write to confirmed DB:
 
-if exists(keystore_users_fn):
-    with open(keystore_users_fn) as f:
-        d = f.read()
-    h = json.loads(d)
-    USER_DB.update(h)
-
-    print ('LOADED', len(h), keystore_users_fn)
+confirmed_db = {'votes':manager.dict(), ##
+                'flags':manager.dict(), ##
+                'posts':manager.dict(), ##
+                }
 
 ############### CCCoin Core API:
 
-from ethjsonrpc.utils import hex_to_dec, clean_hex, validate_block
 
-from random import choice
+class CCCoin2:
+    def __init__(self):
+        ## TOK rewards settings:
+        
+        self.REWARDS_CURATION = 90.0    ## Voting rewards
+        self.REWARDS_POSTING = 10.0     ## Posting rewards
+        self.REWARDS_WITNESS = 10.0     ## Witness rewards
+        self.REWARDS_SPONSOR = 10.0     ## Web nodes that cover basic GAS / TOK for users on their node.
+        
+        self.REWARDS_FREQUENCY = 140    ## 140 blocks = 7 hours
+        
+        self.MAX_UNBLIND_DELAY = 20     ## Maximum number of blocks allowed between submitting a blind vote and unblinding.
+        
+        self.MAX_GAS_DEFAULT = 10000    ## Default max gas fee per contract call.
+        self.MAX_GAS_REWARDS = 10000    ## Max gas for rewards function.
+        
+        self.NEW_USER_LOCK_DONATION = 1 ## Free LOCK given to new users that signup through this node.
 
+        self.LOCK_INTEREST_RATE = 1.0    ## Annual inteest rate paid to LOCK holders
 
-def generate_keypair():
-    from ethereum import transactions
-    from ethereum import utils
+        ###
+        
+        self.latest_block_num = -1
+        
+        self.posts_by_post_id = {}        ## {post_id:post}
+        self.post_ids_by_block_num = {}   ## {block_num:[post_id,...]}
+        self.votes_lookup = {}            ## {(user_id, item_id): direction}
+        
+        self.blind_lookup = {}            ## {block_number:[block_hash, ...]}
+        self.blind_lookup_rev = {}        ## {blind_hash:blind_dict}
 
-    priv = urandom(32)
-    pub = utils.privtoaddr(priv)
+        self.old_actions = {}             ## {block_num:[action,...]}
+        self.old_lock_balances = {}       ## {block_num:}
+        
+        self.block_info = {}              ## {block_number:{info}}
+        
+        self.balances_tok = {}            ## {user_id:amount}
+        self.balances_lock = {}           ## {user_id:amount}
+        
+        self.voting_bandwidth = {}        ## {user_id:amount}
+        self.posting_bandwidth = {}       ## {user_id:amount}
+
+        self.num_votes = Counter()        ## {(user_id,block_num):num}
+
+        self.prev_block_number = -1
+
     
-    return utils.decode_addr(pub), priv
+    def main_callback(self,
+                      msg,
+                      receipt,
+                      confirm_level,
+                      do_verify = True,
+                      ):
+        """
+        - Update internal state based on new messages.
+        - Compute rewards for confirmed blocks, every N hours.
+           + Distribute rewards if synced to latest block.
+           + Otherwise read in and subtract old rewards, to compute outstanding rewards.
+        
+        === Example msg:
+        {
+            "type": "mined", 
+            "blockHash": "0xebe2f5a6c9959f83afc97a54d115b64b3f8ce62bbccb83f22c030a47edf0c301", 
+            "transactionHash": "0x3a6d530e14e683e767d12956cb54c62f7e8aff189a6106c3222b294310cd1270", 
+            "data": "{\"has_read\":true,\"has_write\":true,\"pub\":\"f2e642e8a5ead4fc8bb3b8776b949e52b23317f1e6a05e99619330cca0fc6f87de28131e696ba7f9d9876d99c952e3ccceda6d3324cdfaf5452cf8ea01372dc1\",\"write_data\":{\"payload\":\"{\\\"command\\\":\\\"unblind\\\",\\\"item_type\\\":\\\"votes\\\",\\\"blind_hash\\\":\\\"59f4132fb7d6e430c591cd14a9d1423126dca1ec3f75a3ea1ebed4d2d4454471\\\",\\\"blind_reveal\\\":\\\"{\\\\\\\"votes\\\\\\\":[{\\\\\\\"item_id\\\\\\\":\\\\\\\"1\\\\\\\",\\\\\\\"direction\\\\\\\":0}],\\\\\\\"rand\\\\\\\":\\\\\\\"tLKFUfvh0McIDUhr\\\\\\\"}\\\",\\\"nonce\\\":1485934064181}\",\"payload_decoded\":{\"blind_hash\":\"59f4132fb7d6e430c591cd14a9d1423126dca1ec3f75a3ea1ebed4d2d4454471\",\"blind_reveal\":\"{\\\"votes\\\":[{\\\"item_id\\\":\\\"1\\\",\\\"direction\\\":0}],\\\"rand\\\":\\\"tLKFUfvh0McIDUhr\\\"}\",\"command\":\"unblind\",\"item_type\":\"votes\",\"nonce\":1485934064181},\"pub\":\"f2e642e8a5ead4fc8bb3b8776b949e52b23317f1e6a05e99619330cca0fc6f87de28131e696ba7f9d9876d99c952e3ccceda6d3324cdfaf5452cf8ea01372dc1\",\"sig\":{\"sig_r\":\"9f074305e710c458ee556f7c6ba236cc57869ad9348c75ce1a47094b9dbaa6dc\",\"sig_s\":\"7d0e0d70f1d440e86487881893e27f12192dd23549daa4dc89bb4530aee35c3b\",\"sig_v\":28}}}", 
+            "topics": [
+                "0x27de6db42843ccfcf83809e5a91302efd147c7514e1f7566b5da6075ad2ef4df"
+            ], 
+            "blockNumber": "0x68", 
+            "address": "0x88f93641a96cb032fd90120520b883a657a6f229", 
+            "logIndex": "0x00", 
+            "transactionIndex": "0x00"
+        }
+
+        === Example loads_compact(msg['data']):
+        
+        {
+            "pub": "f2e642e8a5ead4fc8bb3b8776b949e52b23317f1e6a05e99619330cca0fc6f87de28131e696ba7f9d9876d99c952e3ccceda6d3324cdfaf5452cf8ea01372dc1", 
+            "sig": {
+                "sig_s": "7d0e0d70f1d440e86487881893e27f12192dd23549daa4dc89bb4530aee35c3b", 
+                "sig_r": "9f074305e710c458ee556f7c6ba236cc57869ad9348c75ce1a47094b9dbaa6dc", 
+                "sig_v": 28
+            }, 
+            "payload": "{\"command\":\"unblind\",\"item_type\":\"votes\",\"blind_hash\":\"59f4132fb7d6e430c591cd14a9d1423126dca1ec3f75a3ea1ebed4d2d4454471\",\"blind_reveal\":\"{\\\"votes\\\":[{\\\"item_id\\\":\\\"1\\\",\\\"direction\\\":0}],\\\"rand\\\":\\\"tLKFUfvh0McIDUhr\\\"}\",\"nonce\":1485934064181}", 
+        }
+
+        ==== Example loads_compact(loads_compact(msg['data'])['payload'])
+
+        {
+            "nonce": 1485934064181, 
+            "item_type": "votes", 
+            "blind_hash": "59f4132fb7d6e430c591cd14a9d1423126dca1ec3f75a3ea1ebed4d2d4454471", 
+            "blind_reveal": "{\"votes\":[{\"item_id\":\"1\",\"direction\":0}],\"rand\":\"tLKFUfvh0McIDUhr\"}", 
+            "command": "unblind"
+        }
+
+        """
+        msg['data'] = solidity_string_decode(msg['data'])
+
+        msg['blockNumber'] = ethereum.utils.parse_int_or_hex(msg['blockNumber'])
+        msg["logIndex"] = ethereum.utils.parse_int_or_hex(msg['logIndex'])
+        msg["transactionIndex"] = ethereum.utils.parse_int_or_hex(msg['transactionIndex'])
+
+        #try:
+        #    loads_compact(msg['data'])
+        #except:
+        #    print 'BAD_MESSAGE'
+        #    assert False
+        #    return
+        
+        print ('====MAIN_CALLBACK:')
+        print json.dumps(msg, indent=4)
+        
+        msg_data = loads_compact(msg['data'])
+        
+        if confirm_level == 'CONFIRMED':
+            the_db = confirmed_db
+        
+        elif confirm_level == 'PENDING':
+            the_db = pending_db
+        
+        payload_decoded = loads_compact(msg_data['payload'])
+        
+        if do_verify:
+            is_success = btc.ecdsa_raw_verify(btc.sha256(msg_data['payload'].encode('utf8')),
+                                              (msg_data['sig']['sig_v'],
+                                               btc.decode(msg_data['sig']['sig_r'],16),
+                                               btc.decode(msg_data['sig']['sig_s'],16),
+                                              ),
+                                              msg_data['pub'],
+                                              )
+            assert is_success, 'MESSAGE_VERIFY_FAILED'
+            
+        """
+        Rewards:
+        - wait sufficient time
+        - look at all unblinds
+          + sort stuff into 
+
+
+        LOOP:
+        - get latest block number
+        - newFilter for confirmed blocks
+        
+        """
+        
+        ## Update internal states:
+        
+        #if msg['blockNumber'] not in self.block_info:
+        #    h = self.c.eth_getBlockByHash()
+        
+        if payload_decoded['command'] == 'balance':
+            
+            ## Record balance updates:
+            
+            assert False, 'TODO - confirm that log was written by contract.'
+            
+            self.balances_tok[payload['addr']] += payload['amount']
+            
+        elif payload_decoded['command'] == 'blind':
+            
+            ## Just save earliest blinding blockNumber for later:
+            
+            ## TODO: save token balance at this time.
+            
+            if msg['blockNumber'] not in self.blind_lookup:
+                self.blind_lookup[msg['blockNumber']] = set()
+            self.blind_lookup[msg['blockNumber']].add(payload_decoded['blind_hash'])
+            
+            if payload_decoded['blind_hash'] not in self.blind_lookup_rev:
+                self.blind_lookup_rev[payload_decoded['blind_hash']] = msg['blockNumber']
+        
+        elif payload_decoded['command'] == 'unblind':
+
+            ## Add to caches:
+            
+            payload_inner = loads_compact(payload_decoded['blind_reveal'])
+            
+            if payload_decoded['item_type'] == 'posts':
+                
+                for post in payload_inner['posts']:
+                    
+                    self.posts_by_post_id[post['post_id']] = post
+                    
+                    if msg['blockNumber'] not in self.post_ids_by_block_num:
+                        self.post_ids_by_block_num[msg['blockNumber']] = []
+                    self.post_ids_by_block_num[msg['blockNumber']].append(post['post_id'])
+                    
+                    if post.get('deleted') and (post['post_id'] in self.posts_by_post_id):
+                        self.posts_by_post_id[post['post_id']]['deleted'] = True
+            
+            elif payload_decoded['item_type'] == 'votes':
+                ########
+                for vote in payload_inner['votes']:
+                    if vote['direction'] in [1,-1]:
+                        ## Add vote:
+                        the_db['votes'][(msg_data['pub'], vote['item_id'])] = vote['direction']
+                                                    
+                    elif vote['direction'] == 0:
+                        ## Delete vote:
+                        try: del the_db['votes'][(msg_data['pub'], vote['item_id'])]
+                        except: pass
+                                                
+                    elif vote['direction'] == 2:
+                        ## Add flag:
+                        the_db['flags'][(msg_data['pub'], vote['item_id'])] = vote['direction']
+
+
+                    elif vote['direction'] == -2:
+                        ## Delete flag:
+                        try: del the_db['flags'][(msg_data['pub'], vote['item_id'])]
+                        except: pass
+                        
+                    else:
+                        assert False, vote['direction']
+                ########
+                
+            
+        elif payload_decoded['command'] == 'tok_to_lock':
+            pass
+        
+        elif payload_decoded['command'] == 'lock_to_tok':
+            pass
+        
+        elif payload_decoded['command'] == 'account_settings':
+            pass
+        
+
+        ## Block rewards, for sufficiently old actions:
+
+        if (msg['blockNumber'] > self.prev_block_number) and (msg['blockNumber'] % 700 == 699):
+            pass
+            
+        #for xnum in xrange(last_block_rewarded,
+        #                   latest_block_ready,
+        #                   ):
+        #    pass
+
+        self.prev_block_number = msg['blockNumber']
+
+import struct
+import binascii
+
+def solidity_string_decode(ss):
+    ss = binascii.unhexlify(ss[2:])
+    ln = struct.unpack(">I", ss[32:][:32][-4:])[0]
+    return ss[32:][32:][:ln]
+
+def solidity_string_encode(ss):
+    rr = ('\x00' * 31) + ' ' + ('\x00' * 28) + struct.pack(">I", len(ss)) + ss    
+    rem = 32 - (len(rr) % 32)
+    if rem != 0:
+        rr += ('\x00' * (rem))
+    rr = '0x' + binascii.hexlify(rr)
+    return rr
+
+
+import web3
+
+def test_inner(via_cli = False):
+    """
+    Test logging and rewards functions.
+    """
+
+    code = \
+    """
+    pragma solidity ^0.4.6;
+
+    contract CCCoinToken {
+        event TheLog(bytes);
+        function addLog(bytes val) payable { 
+            TheLog(val);
+        }
+    }
+    """
     
+    cw = ContractWrapper(code)
+    
+    cont_addr = cw.deploy()
     
 
+    events = [{'payload_decoded': {u'num_items': 1, u'item_type': u'votes', u'blind_hash': u'59f4132fb7d6e430c591cd14a9d1423126dca1ec3f75a3ea1ebed4d2d4454471', u'command': u'blind', u'nonce': 1485934064014}, u'sig': {u'sig_s': u'492f15906be6bb924e7d9b9d954bc989a14c85f5c3282bb4bd23dbf2ad37c206', u'sig_r': u'abc17a3e61ed708a34a2af8bfad3270863f4ee02dd0e009e80119262087015d4', u'sig_v': 28}, u'payload': u'{"command":"blind","item_type":"votes","blind_hash":"59f4132fb7d6e430c591cd14a9d1423126dca1ec3f75a3ea1ebed4d2d4454471","num_items":1,"nonce":1485934064014}', u'pub': u'f2e642e8a5ead4fc8bb3b8776b949e52b23317f1e6a05e99619330cca0fc6f87de28131e696ba7f9d9876d99c952e3ccceda6d3324cdfaf5452cf8ea01372dc1'},
+              {'payload_decoded': {u'nonce': 1485934064181, u'item_type': u'votes', u'blind_hash': u'59f4132fb7d6e430c591cd14a9d1423126dca1ec3f75a3ea1ebed4d2d4454471', u'blind_reveal': u'{"votes":[{"item_id":"1","direction":0}],"rand":"tLKFUfvh0McIDUhr"}', u'command': u'unblind'}, u'sig': {u'sig_s': u'7d0e0d70f1d440e86487881893e27f12192dd23549daa4dc89bb4530aee35c3b', u'sig_r': u'9f074305e710c458ee556f7c6ba236cc57869ad9348c75ce1a47094b9dbaa6dc', u'sig_v': 28}, u'payload': u'{"command":"unblind","item_type":"votes","blind_hash":"59f4132fb7d6e430c591cd14a9d1423126dca1ec3f75a3ea1ebed4d2d4454471","blind_reveal":"{\\"votes\\":[{\\"item_id\\":\\"1\\",\\"direction\\":0}],\\"rand\\":\\"tLKFUfvh0McIDUhr\\"}","nonce":1485934064181}', u'pub': u'f2e642e8a5ead4fc8bb3b8776b949e52b23317f1e6a05e99619330cca0fc6f87de28131e696ba7f9d9876d99c952e3ccceda6d3324cdfaf5452cf8ea01372dc1'},
+              ]
+
+    #events = ['test' + str(x) for x in xrange(3)]
+
+    events = [dumps_compact(x) for x in events[-1:]]
+    
+    for xx in events:
+        cw.send_transaction('addLog(bytes)',
+                            [xx],
+                            block = True,
+                            gas = 1000000,
+                            gas_price = 100,
+                            value= web3.utils.currency.to_wei(1,'ether'),
+                            )
+        if False:
+            print ('SIZE', len(xx))
+            tx = cw.c.call_with_transaction(cw.c.eth_coinbase(),
+                                            cw.contract_address,
+                                            'addLog(bytes)',
+                                            [xx],
+                                            gas = 1000000,
+                                            gas_price = 100,
+                                            value= web3.utils.currency.to_wei(1,'ether'),
+                                            )
+            receipt = cw.c.eth_getTransactionReceipt(tx) ## blocks to ensure transaction is mined
+        
+    def cb(msg, receipt, confirm_level):
+        msg['data'] = solidity_string_decode(msg['data'])
+        print ('GOT_LOG:')
+        print json.dumps(msg, indent=4)
+    
+    #cw.events_callback = cb
+    
+    cc2 = CCCoin2()
+    
+    cw.events_callback = cc2.main_callback
+    
+    logs = cw.poll_incoming()
+
+    if False:
+        print ('XXXXXXXXX')
+        params = {"fromBlock": "0x01",
+                  "address": cw.contract_address,
+        }
+        filter = str(cw.c.eth_newFilter(params))
+
+        for xlog in cw.c.eth_getFilterLogs(filter):
+            print json.dumps(xlog, indent=4)
+
+
+
+
+    
+    
+        
 class CCCoinAPI:
     def _validate_api_call(self):
         pass
@@ -846,21 +1042,6 @@ class CCCoinAPI:
         
         self.mode = mode
         
-        ## TOK rewards settings:
-        
-        self.REWARDS_CURATION = 90.0   ## Voting rewards
-        self.REWARDS_POSTING = 10.0    ## Posting rewards
-        self.REWARDS_WITNESS = 10.0    ## Witness rewards
-        self.REWARDS_SPONSOR = 10.0    ## Web nodes that cover basic GAS / TOK for users on their node.
-        
-        self.REWARDS_FREQUENCY = 140   ## 140 blocks = 7 hours
-        
-        self.MAX_UNBLIND_DELAY = 20    ## Maximum number of blocks allowed between submitting a blind vote and unblinding.
-        
-        self.MAX_GAS_DEFAULT = 10000       ## Default max gas fee per contract call.
-        self.MAX_GAS_REWARDS = 10000       ## Max gas for rewards function.
-        
-        self.NEW_USER_TOK_DONATION = 1  ## Free LOCK given to new users that signup through this node.
         
         ## Balances:
 
@@ -870,41 +1051,11 @@ class CCCoinAPI:
         
         self.cw = ContractWrapper(events_callback = self.rewards_and_auditing_callback)
 
-        ## Key store for users on this node:
-        
-        self.master_password = 'todo'#getpass.getpass()
-
-        self.the_keystore = PoorMansKeystore(key = self.master_password) ## TODO - allow multiple keystore files?
-
         ## Check that accounts that are both in the local keystore & the geth keystore:
-        
-        self.working_accounts = {} 
-        
-        num_good = 0
-        num_bad = 0
-
-        if not TEST_MODE:
-            accounts = self.cw.c._call('personal_listAccounts')
-
-            for addr in accounts:
-                upw = self.the_keystore.get_password(addr)
-
-                r = self.cw.c._call('personal_unlockAccount', [addr, upw, 0])
-
-                if (upw is not False) and r:
-                    self.working_accounts[addr] = upw
-                    num_good += 1
-                else:
-                    num_bad += 1
-
-            print ('unlocked:', num_good, 'failed:', num_bad)
-            #print ('Press Enter...')
-            #raw_input()
-        
+                
         ## Tracking:
         
         self.latest_block_number = -1
-        self.is_caught_up = False
         
         ## User tracking:
 
@@ -945,31 +1096,65 @@ class CCCoinAPI:
         self.new_voters_for_item = {}      ## {item_id:set(voters)}
 
         self.sponsors = {}
+
+    def get_current_tok_per_lock(self,
+                                 genesis_tm,
+                                 current_tm,
+                                 start_amount = 1.0,
+                                 ):
+        """
+        Returns current TOK/LOCK exchange rate, based on seconds since contract genesis and annual lock interest rate.
+        """
+        
+        rr = start_amount * ((1.0 + self.LOCK_INTEREST_RATE) ** ((current_tm - genesis_tm) / 31557600.0))
+        
+        return rr
+
+        
         
     def rewards_and_auditing_callback(self,
                                       msg,
                                       receipt,
                                       confirm_level,
+                                      do_verify = True,
                                       ):
         """
         """
         
         ## Proceed to next step for recently committed transactions:
+
+        if confirm_level == 'CONFIRMED':
+            the_db = confirmed_db
         
-        try:
-            hh = loads_compact(msg['data'].decode('hex'))
-        except:
-            print ('BAD_MESSAGE', msg)
-            return
+        elif confirm_level == 'PENDING':
+            the_db = pending_db
         
+        hh = loads_compact(msg['payload'])
+        
+        if do_verify:
+            is_success = btc.ecdsa_raw_verify(btc.sha256(hh['payload'].encode('utf8')),
+                                              (hh['sig']['sig_v'],
+                                               btc.decode(hh['sig']['sig_r'],16),
+                                               btc.decode(hh['sig']['sig_s'],16),
+                                              ),
+                                              hh['pub'],
+                                              )
+            assert is_success, 'MESSAGE_VERIFY_FAILED'
+        
+        ## Update internal states:
+
+
+        ## Block rewards:
+
+            
         if confirm_level == 'CONFIRMED':
 
-            block_number = int(msg['blockNumber'], 16)
+            block_number = ethereum.utils.parse_int_or_hex(msg['blockNumber'])
             
             ## REWARDS:
             
-            if is_caught_up and (block_number > self.latest_block_number):
-
+            if (block_number > self.latest_block_number):
+                
                 ## GOT NEW BLOCK:
 
                 self.latest_block_number = max(block_number, self.latest_block_number)
@@ -1021,7 +1206,7 @@ class CCCoinAPI:
 
                         tx = self.cw.send_transaction('addLog(bytes)',
                                                       [rr],
-                                                      value = self.MAX_GAS_DEFAULT,
+                                                      gas_limit = self.MAX_GAS_DEFAULT,
                                                       )
 
                         xx = self.new_rewards.items()
@@ -1030,7 +1215,7 @@ class CCCoinAPI:
                                                       [[x for x,y in xx],
                                                        [y for x,y in xx],
                                                       ],
-                                                      value = self.MAX_GAS_REWARDS,
+                                                      gas_limit = self.MAX_GAS_REWARDS,
                                                       )
                         self.new_rewards.clear()
                 
@@ -1133,8 +1318,6 @@ class CCCoinAPI:
 
                 self.balances_tok
             
-            for sig, block_number in self.my_votes_confirmed.iteritems():
-                pass
         
     def deploy_contract(self,):
         """
@@ -1142,127 +1325,7 @@ class CCCoinAPI:
         """
         self.cw.deploy()
     
-
-    def create_account(self,
-                       user_info,
-                       password,
-                       public_wallet_address = False,
-                       ):
-        """
-        Note: 
-        User needs LOCK balance before he can perform any accounts. 
-
-        Custom anti-spam measures should be added here by nodes, to prevent draining of funds.
-
-        New keypair is generated if no public wallet address is passed in.
-        """
         
-
-        user_info['sponsor'] = self.cw.c.eth_coinbase()
-        
-        private_wallet_key = False
-        
-        if not public_wallet_address:
-            public_wallet_address, private_wallet_key = generate_keypair()
-        
-        if not TEST_MODE:
-            ## TODO: temporary
-
-            assert user_info['username']
-
-            if user_info['username'] in self.username_to_id:
-                return {'success':False, 'error':'USERNAME_TAKEN'}
-
-            user_address = self.cw.c._call('personal_newAccount', [self.cw.c.eth_coinbase(), passphrase])
-
-            self.the_keystore.set_password(user_address, passphrase)
-            self.working_accounts[addr] = passphrase
-
-            rr = dumps_compact({'t':'update_user',
-                                'user_info':user_info,
-                                'public_wallet_address':public_wallet_address,
-                                })
-
-            ## Sent from contract owner, who will fund initial TOK and gas fees:
-
-            tx = self.cw.send_transaction('addLog(bytes)',
-                                          [rr,
-                                           self.NEW_USER_TOK_DONATION,
-                                           ],
-                                          send_from = user_id, ## Required, since sponsor can be controlled.
-                                          value = self.MAX_GAS_DEFAULT,
-                                          )
-
-            self.username_to_id[user_info['username']] = user_address ## TODO, wait for confirmations?
-            
-        else:
-            uu = choice(USER_DB.values())
-            user_address = uu['public_key']
-
-        
-        
-        return {'success':True,
-                'user_info':uu,
-                'user_id':public_wallet_address,
-                'public_wallet_address':public_wallet_address,
-                'private_wallet_key':private_wallet_key,
-                #'tx':tx,
-                }
-
-    
-    def post_item(self,
-                  user_id,
-                  item_data_string,
-                  sig,
-                  callback = False
-                  ):
-        print ('INSIDE post_item')
-        
-        hh = {'t':'post', 'user_id':user_id, 'sig':'sig', 'item_data':item_data_string}
-        
-        item_id = consistent_hash(hh)
-        
-        print ('INSIDE post_item2', item_id)
-        
-        rr = dumps_compact(hh)
-        
-        print ('INSIDE post_item3')
-        
-        item_data = loads_compact(item_data_string)
-
-        print ('INSIDE post_item4')
-        
-        if item_id in self.items_cache:
-            print 'RETURN1'
-            return {'success':True, 'item_id':item_id}
-
-
-        print ('INSIDE post_item5')
-
-        if not TEST_MODE:
-            if user_id not in self.working_accounts:
-                print 'RETURN2'
-                return {'success':False, 'error':'ACCOUNT_NOT_LOADED'}
-        
-        hh['created'] = int(time())
-        hh['item_id'] = item_id
-        hh['score'] = 1
-        hh['score_weighted'] = 1
-        
-        ## TODO: put LOCK-weighted scores in cache?
-        
-        self.items_cache[item_id] = hh
-
-        if not TEST_MODE:
-            tx = self.cw.send_transaction('addLog(bytes)',
-                                          [rr],
-                                          send_from = user_id,
-                                          value = self.MAX_GAS_DEFAULT,
-                                          callback = callback,
-                                          )
-        print 'RETURN3'
-        return {'success':True, 'item_id':item_id}
-    
     def submit_blind_action(self,
                             vote_data,
                             ):
@@ -1298,7 +1361,7 @@ class CCCoinAPI:
             tx = self.cw.send_transaction('addLog(bytes)',
                                           [rr],
                                           #send_from = user_id,
-                                          value = self.MAX_GAS_DEFAULT,
+                                          gas_limit = self.MAX_GAS_DEFAULT,
                                           callback = False,
                                           )
 
@@ -1344,26 +1407,43 @@ class CCCoinAPI:
             
             for vote in payload_inner['votes']:
                 if vote['direction'] in [1,-1]:
-                    USER_PENDING_VOTES[(vote_data['pub'], vote['item_id'])] = vote['direction']
+                    pending_db['votes'][(vote_data['pub'], vote['item_id'])] = vote['direction']
                 elif vote['direction'] == 0:
                     try:
-                        del USER_PENDING_VOTES[(vote_data['pub'], vote['item_id'])]
+                        del pending_db['votes'][(vote_data['pub'], vote['item_id'])]
                     except:
                         pass
                 elif vote['direction'] == 2:
-                    USER_PENDING_FLAGS[(vote_data['pub'], vote['item_id'])] = vote['direction']
+                    pending_db['flags'][(vote_data['pub'], vote['item_id'])] = vote['direction']
                 elif vote['direction'] == -2:
                     try:
-                        del USER_PENDING_FLAGS[(vote_data['pub'], vote['item_id'])]
+                        del pending_db['flags'][(vote_data['pub'], vote['item_id'])]
                     except:
                         pass
                 else:
                     assert False, vote['direction']
                     
         elif payload['item_type'] == 'posts':
-            pass
+            assert False, 'WIP'
+
+            print ('INSIDE post_item5')
+
+            if not TEST_MODE:
+                if user_id not in self.working_accounts:
+                    print 'RETURN2'
+                    return {'success':False, 'error':'ACCOUNT_NOT_LOADED'}
+
+            hh['created'] = int(time())
+            hh['item_id'] = item_id
+            hh['score'] = 1
+            hh['score_weighted'] = 1
+
+            ## TODO: put LOCK-weighted scores in cache?
+
+            self.items_cache[item_id] = hh
+
         
-        #print ('CACHED_VOTES', dict(USER_PENDING_VOTES))
+        #print ('CACHED_VOTES', dict(pending_db['votes']))
             
         rr = dumps_compact(vote_data)
         
@@ -1373,7 +1453,7 @@ class CCCoinAPI:
             tx = self.cw.send_transaction('addLog(bytes)',
                                           [rr],
                                           #send_from = user_id,
-                                          value = self.MAX_GAS_DEFAULT,
+                                          gas_limit = self.MAX_GAS_DEFAULT,
                                           )
             tracking_id = tx
         
@@ -1384,7 +1464,7 @@ class CCCoinAPI:
     def lockup_tok(self):
         tx = self.cw.send_transaction('lockupTok(bytes)',
                                       [rr],
-                                      value = self.MAX_GAS_DEFAULT,
+                                      gas_limit = self.MAX_GAS_DEFAULT,
                                       )
 
     def get_balances(self,
@@ -1392,7 +1472,7 @@ class CCCoinAPI:
                      ):
         xx = self.cw.read_transaction('balanceOf(address)',
                                       [rr],
-                                      value = self.MAX_GAS_DEFAULT,
+                                      gas_limit = self.MAX_GAS_DEFAULT,
                                       )
         rr = loads_compact(xx['data'])
         return rr
@@ -1400,7 +1480,7 @@ class CCCoinAPI:
     def withdraw_lock(self,):
         tx = self.cw.send_transaction('withdrawTok(bytes)',
                                       [rr],
-                                      value = self.MAX_GAS_DEFAULT,
+                                      gas_limit = self.MAX_GAS_DEFAULT,
                                       )
         
     def get_items(self,
@@ -2050,8 +2130,6 @@ def check_auth_asymmetric(needs_read = False,
         
         def proxyfunc(self, *args, **kw):
             
-            import bitcoin as b
-
             self._current_user = {}
             
             #
@@ -2092,13 +2170,13 @@ def check_auth_asymmetric(needs_read = False,
                 
                 #LATEST_NONCE[user_key] = hh['payload_decoded']['nonce']
                 
-                is_success = b.ecdsa_raw_verify(b.sha256(hh['payload'].encode('utf8')),
-                                                (hh['sig']['sig_v'],
-                                                 b.decode(hh['sig']['sig_r'],16),
-                                                 b.decode(hh['sig']['sig_s'],16),
-                                                ),
-                                                hh['pub'],
-                                                )
+                is_success = btc.ecdsa_raw_verify(btc.sha256(hh['payload'].encode('utf8')),
+                                                  (hh['sig']['sig_v'],
+                                                   btc.decode(hh['sig']['sig_r'],16),
+                                                   btc.decode(hh['sig']['sig_s'],16),
+                                                  ),
+                                                  hh['pub'],
+                                                  )
                 
                 if is_success:
                     ## write auth overwrites read auth:
@@ -2150,7 +2228,6 @@ class Application(tornado.web.Application):
                     (r'/blind',handle_blind,),
                     (r'/unblind',handle_unblind,),
                     (r'/submit',handle_submit_item,),
-                    (r'/create_account',handle_create_account,),
                     (r'/track',handle_track,),
                     (r'/api',handle_api,),
                     (r'/echo',handle_echo,),
@@ -2218,7 +2295,8 @@ class BaseHandler(tornado.web.RequestHandler):
         from random import choice, randint
         kwargs['choice'] = choice
         kwargs['randint'] = randint
-        kwargs['the_db'] = the_db
+        kwargs['pending_db'] = pending_db
+        kwargs['confirmed_db'] = confirmed_db
             
         r = self.loader.load(template_name).generate(**kwargs)
         
@@ -2273,8 +2351,11 @@ class BaseHandler(tornado.web.RequestHandler):
                     **kw):
 
         import traceback, sys, os
-        ee = '\n'.join([line for line in traceback.format_exception(*sys.exc_info())])
-        print (ee)
+        try:
+            ee = '\n'.join([str(line) for line in traceback.format_exception(*sys.exc_info())])
+            print (ee)
+        except:
+            print ('!!!ERROR PRINTING EXCEPTION')
         self.write_json({'error':'INTERNAL_EXCEPTION','message':ee})
 
     
@@ -2323,8 +2404,6 @@ class handle_login_1(BaseHandler):
 
         self.write_json({'challenge':challenge})
 
-import binascii
-import bitcoin
 
 class handle_login_2(BaseHandler):
     #@check_auth(auth = False)
@@ -2353,18 +2432,16 @@ class handle_login_2(BaseHandler):
                              })
             return
         
-        import bitcoin as b
-
         print 'GOT=============='
         print json.dumps(hh, indent=4)
         print '================='
         
-        is_success = b.ecdsa_raw_verify(b.sha256(challenge.encode('utf8')),
-                                        (hh['sig']['sig_v'],
-                                         b.decode(hh['sig']['sig_r'],16),
-                                         b.decode(hh['sig']['sig_s'],16)),
-                                        the_pub,
-                                        )
+        is_success = btc.ecdsa_raw_verify(btc.sha256(challenge.encode('utf8')),
+                                          (hh['sig']['sig_v'],
+                                           btc.decode(hh['sig']['sig_r'],16),
+                                           btc.decode(hh['sig']['sig_s'],16)),
+                                          the_pub,
+                                          )
         
         print ('LOGIN_2_RESULT is_success:', is_success)
         
@@ -2382,65 +2459,8 @@ class handle_login_2(BaseHandler):
 
 
         
-class handle_create_account(BaseHandler):
-    
-    @check_auth(needs_read = False, needs_write = False)
-    @tornado.gen.coroutine
-    def post(self):
-        """
-        """
-        
-        print ('CREATE_ACCOUNT')
-
-        hh = json.loads(self.request.body)
-        
-        user_data = hh.get('user_data',{})
-
-        password = hh.get('password','')
-        
-        if not password:
-            self.write_json({'error':'BAD_PASSWORD'})
-            return
-        
-        user = self.cccoin.create_account(user_data,
-                                          password,
-                                          ) 
-
-        print ('CREATE_ACCOUNT_RETURNING', user)
-        
-        self.write_json(user)
 
 
-class handle_submit_item(BaseHandler):
-
-    @check_auth(needs_write = True)
-    @tornado.gen.coroutine
-    def post(self):
-
-        print ('INSIDE handle_submit_item')
-        
-        user = self.get_current_user()
-        
-        data = self.request.body
-        
-        ## TODO: use callback to track confirmations?:
-        
-        tracking_id = RUN_ID + '|' + str(TRACKING_NUM.increment())
-
-        sig = dict(self.request.headers).get("Sig", False)
-
-        try:
-            rr = self.cccoin.post_item(user['public_key'],
-                                       data,
-                                       sig,
-                                       )
-        except:
-            import traceback, sys, os
-            print '\n'.join([line for line in traceback.format_exception(*sys.exc_info())])
-
-        print ('DONE_SUBMIT', rr)
-        
-        self.write_json(rr)
 
 
 class handle_echo(BaseHandler):
@@ -2580,6 +2600,7 @@ functions=['deploy_contract',
            'web',
            'sig_helper',
            'vote_helper',
+           'test_inner',
            ]
 
 def main():    
