@@ -245,18 +245,26 @@ function do_post(image_url, image_title){
     // Create blinded post:
     
     console.log('sign_blind');
+
+    keys = grab_keys();
     
-    the_string = JSON.stringify({image_url:image_url,
-				 image_title:image_title,
+    if (!keys) {
+	$('#modal2').modal('open');
+	return;
+    }
+    
+    var [username, owner_addr, posting_priv, posting_pub] = keys;
+
+    the_string = JSON.stringify({posts:[{image_url:image_url,
+					image_title:image_title,
+				       }],
 				 rand: weak_random(16), // Mitigate known plaintext attacks.
 				});
     
-    blind_something(the_string, 1, 'post');
-    
-    console.log('DONE do_post()');
+    blind_something(the_string, 1, 'posts', posting_priv, posting_pub);
 }   
 
-function blind_something(votes_string, num_items, item_type){
+function blind_something(votes_string, num_items, item_type, posting_priv, posting_pub){
     /* 
        Send stuff to blockchain with 2-phase blind & reveal process. 
        Currently used for votes and posts.
@@ -294,7 +302,11 @@ function blind_something(votes_string, num_items, item_type){
 			      pub: posting_pub,
 			     })
     });
-    
+
+    request1.always(function (jqXHR) {
+	console.log('STATUS1:',jqXHR.status);
+    })
+        
     request1.done(function( msg ) {
 	console.log('blind_something.request1.done()');
 	
@@ -328,28 +340,59 @@ function blind_something(votes_string, num_items, item_type){
 				   pub: posting_pub
 				 })
 	});
-	
+
+	request2.always(function (jqXHR) {
+	    console.log('STATUS2:',jqXHR.status);
+	})
+
 	request2.done(function( msg ) {
 	    console.log('blind_something.request2.done()');
 	    
 	    //voteobj.removeClass('white');
-	    	    
+
+	    if (item_type == 'posts'){
+		//creator_addr = ethUtils.pubToAddress(new Buffer(posting_pub, 'hex')).toString('hex');
+
+		creator_addr = posting_pub.slice(0, 20);
+		    
+		window.location.href = '/?user=' + creator_addr + '&sort=new'; // TODO - ajax refresh listing?
+		
+		console.log('DONE unblind item_type ' + item_type);
+
+	    }
+
+	    
 	});
 	
-	request2.fail(function( jqXHR, textStatus ) {
-	    console.log('blind_something.request2.fail()');
+	request2.fail(function( jqXHR, textStatus, error_thrown ) {
+	    console.log('blind_something.request2.fail()', jqXHR);
 
-	    alert( "Unblinding failed: " + textStatus );
+	    //alert( "Unblinding failed: " + jqXHR.responseText );
+	    
+	    if(jqXHR.status && jqXHR.status == 400){
+                alert("Unblinding failed:" + jqXHR.responseText); 
+            }
+	    else{
+                alert("Unblinding failed with code: " + jqXHR.status);
+            }
+
 	    //voteobj.removeClass('white');
 	    //voteobj.addClass(inactive_class);
 	});
 	
     });
     
-    request1.fail(function( jqXHR, textStatus ) {
-	console.log('blind_something.request1.fail()');
+    request1.fail(function( jqXHR, textStatus, error_thrown ) {
+	console.log('blind_something.request1.fail()', jqXHR);
 
-	alert( "Blinding failed: " + textStatus );
+	if(jqXHR.status && jqXHR.status==400){
+            alert("Blinding failed:" + jqXHR.responseText); 
+        }
+	else{
+            alert("Blinding failed with code: " + jqXHR.status);
+        }
+	
+	//alert( "Blinding failed: " + jqXHR.responseText);
 	    //voteobj.removeClass('white');
 	    //voteobj.addClass(inactive_class);
     });
@@ -519,7 +562,7 @@ function do_vote(item_id, direction){
 				   rand: weak_random(16), // Mitigate known plaintext attacks.
 				  });
     
-    blind_something(votes_string, 1, 'votes');
+    blind_something(votes_string, 1, 'votes', posting_priv, posting_pub);
     
     return;
     

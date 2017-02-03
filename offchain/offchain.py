@@ -32,18 +32,17 @@ from collections import Counter
 ######## Ethereum parts:
 
 
-# main_contract_code = \
-# """
-# pragma solidity ^0.4.6;
+main_contract_code = \
+"""
+pragma solidity ^0.4.6;
 
-# contract CCCoin payable {
-#     /* Used for vote logging of votes, tok lockup, etc. */
-#     event addLog(bytes);
-#     function addLog(bytes val) { 
-#         addLog(val);
-#     }
-# }
-# """
+contract CCCoin payable {
+    event TheLog(bytes);
+    function addLog(bytes val) { 
+        TheLog(val);
+    }
+}
+"""#.replace('payable','')
 
 """
 Contract below implements StandardToken (https://github.com/ethereum/EIPs/issues/20) interface, in addition to:
@@ -56,7 +55,7 @@ Contract below implements StandardToken (https://github.com/ethereum/EIPs/issues
  - Minting / rewards distribution (runnable only by MC, may be called multiple times per rewards cycle due to gas limits)
 """
 
-main_contract_code = \
+xmain_contract_code = \
 """
 pragma solidity ^0.4.0;
 
@@ -391,11 +390,10 @@ class ContractWrapper:
                  rpc_host = '127.0.0.1',
                  rpc_port = 9999, ## 8545,
                  confirm_states = {'PENDING':0,
-                                   'CONFIRM_1':1,
-                                   'CONFIRMED':15,
+                                   'BLOCKCHAIN_CONFIRMED':15,
                                    'STALE':100,
                                    },
-                 final_confirm_state = 'CONFIRMED',
+                 final_confirm_state = 'BLOCKCHAIN_CONFIRMED',
                  contract_address = False,
                  ):
         """
@@ -414,6 +412,14 @@ class ContractWrapper:
         self.confirm_states = confirm_states
         self.events_callback = events_callback
         
+        self.c = EthJsonRpc(rpc_host, rpc_port)
+
+        self.pending_transactions = {}  ## {tx:callback}
+        self.pending_logs = {}
+        self.latest_block_num = -1
+
+        self.latest_block_num_done = 0
+
         if contract_address is False:
             if exists(CONTRACT_ADDRESS_FN):
                 print ('Reading contract address from file...', CONTRACT_ADDRESS_FN)
@@ -421,19 +427,13 @@ class ContractWrapper:
                     d = f.read()
                 print ('GOT', d)
                 self.contract_address = d
+            else:
+                self.deploy()
         else:
             self.contract_address = contract_address
-        
-        self.c = EthJsonRpc(rpc_host, rpc_port)
-        
-        self.pending_transactions = {}  ## {tx:callback}
-        self.pending_logs = {}
-        self.latest_block_number = -1
 
-        ###
-        
-        self.latest_block_num_done = 0
-        
+        assert self.contract_address
+                    
     def deploy(self):
         print ('DEPLOYING_CONTRACT...')        
         # get contract address
@@ -451,7 +451,7 @@ class ContractWrapper:
             print ('BLOCKCHAIN_STILL_SYNCING')
             return
         
-        if events_callback is not False:
+        if self.events_callback is not False:
             self.poll_incoming()
         
         self.poll_outgoing()
@@ -464,7 +464,7 @@ class ContractWrapper:
         
         self.latest_block_num = self.c.eth_blockNumber()
 
-        for do_state in ['CONFIRMED',
+        for do_state in ['BLOCKCHAIN_CONFIRMED',
                          #'PENDING',
                          ]:
             
@@ -495,7 +495,7 @@ class ContractWrapper:
                 
                 got_block = ethereum.utils.parse_int_or_hex(msg['blockNumber'])
                 
-                self.events_callback(msg = msg, receipt = False, confirm_level = do_state)
+                self.events_callback(msg = msg, receipt = False, received_via = do_state)
 
                 self.latest_block_num_done = max(0, max(self.latest_block_num_done, got_block - 1))
         
@@ -506,7 +506,7 @@ class ContractWrapper:
                          callback = False,
                          send_from = False,
                          block = False,
-                         gas = False,
+                         gas_limit = False,
                          gas_price = 100,
                          value = 100000000000,
                          ):
@@ -517,6 +517,7 @@ class ContractWrapper:
         
         https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_sendtransaction
         """
+        print ('SEND_TRANSACTION:', foo, args)
 
         if send_from is False:
             send_from = self.c.eth_coinbase()
@@ -528,13 +529,17 @@ class ContractWrapper:
         print ('send_to', send_to)
         print ('foo', foo)
         print ('args', args)
-        #print ('gas', gas)
-        
+        #print ('gas', gas_limit)
+
+        gas_limit = 1000000
+        gas_price = 100
+        value = web3.utils.currency.to_wei(1,'ether')
+                            
         tx = self.c.call_with_transaction(send_from,
                                           send_to,
                                           foo,
                                           args,
-                                          gas = gas,
+                                          gas = gas_limit,
                                           gas_price = gas_price,
                                           value = value,
                                           )
@@ -543,7 +548,7 @@ class ContractWrapper:
             receipt = self.c.eth_getTransactionReceipt(tx) ## blocks to ensure transaction is mined
             #print ('GOT_RECEIPT', receipt)
             #if receipt['blockNumber']:
-            #    self.latest_block_number = max(ethereum.utils.parse_int_or_hex(receipt['blockNumber']), self.latest_block_number)
+            #    self.latest_block_num = max(ethereum.utils.parse_int_or_hex(receipt['blockNumber']), self.latest_block_num)
         else:
             self.pending_transactions[tx] = (callback, self.latest_block_num)
 
@@ -559,7 +564,7 @@ class ContractWrapper:
 
             ## Compare against the block_number where it attempted to be included:
             
-            if (attempt_block_num <= self.latest_block_num - self.confirm_states['CONFIRMED']):
+            if (attempt_block_num <= self.latest_block_num - self.confirm_states['BLOCKCHAIN_CONFIRMED']):
                 continue
             
             receipt = self.c.eth_getTransactionReceipt(tx)
@@ -572,8 +577,9 @@ class ContractWrapper:
             
             ## Now compare against the block_number where it was actually included:
             
-            if (actual_block_number is not False) and (actual_block_number >= self.latest_block_num - self.confirm_states['CONFIRMED']):
-                callback(receipt)
+            if (actual_block_number is not False) and (actual_block_number >= self.latest_block_num - self.confirm_states['BLOCKCHAIN_CONFIRMED']):
+                if callback is not False:
+                    callback(receipt)
                 del self.pending_transactions[tx]
     
     def read_transaction(self, foo, value):
@@ -660,7 +666,7 @@ class SharedCounter(object):
         return self.count.value
 
 
-############## Simple in-memory DB, to start:
+############## Simple in-memory data structures, to start:
 
 RUN_ID = get_random_bytes(32).encode('hex')
 
@@ -674,28 +680,77 @@ CHALLENGES_DB = manager.dict() ## {'public_key':challenge}
 
 SEEN_USERS_DB = manager.dict() ## {'public_key':1}
 
+TEST_MODE = False
 
-TEST_MODE = True
+## Quick in-memory DB:
 
-## Web write to pending DB:
+all_dbs = {}
 
-pending_db = {'votes':manager.dict(), ## {(pub_key, item_id):direction},
-              'flags':manager.dict(), ## {(pub_key, item_id):direction},
-              'posts':manager.dict(), ## {post_id:post}
-              }
-
-## Rewards & Auditors write to confirmed DB:
-
-confirmed_db = {'votes':manager.dict(), ##
-                'flags':manager.dict(), ##
-                'posts':manager.dict(), ##
-                }
+for which in ['BLOCKCHAIN_CONFIRMED',
+              'BLOCKCHAIN_PENDING',
+              'DIRECT',
+              ]:
+    all_dbs[which] = {'votes':manager.dict(), ## {(pub_key, item_id):direction},
+                      'flags':manager.dict(), ## {(pub_key, item_id):direction},
+                      'posts':manager.dict(), ## {post_id:post}
+                      'scores':manager.dict(), ## {item_id:score}
+                      }
 
 ############### CCCoin Core API:
 
 
-class CCCoin2:
-    def __init__(self):
+import struct
+import binascii
+
+def solidity_string_decode(ss):
+    ss = binascii.unhexlify(ss[2:])
+    ln = struct.unpack(">I", ss[32:][:32][-4:])[0]
+    return ss[32:][32:][:ln]
+
+def solidity_string_encode(ss):
+    rr = ('\x00' * 31) + ' ' + ('\x00' * 28) + struct.pack(">I", len(ss)) + ss    
+    rem = 32 - (len(rr) % 32)
+    if rem != 0:
+        rr += ('\x00' * (rem))
+    rr = '0x' + binascii.hexlify(rr)
+    return rr
+
+
+import web3
+
+
+def create_long_id(sender, data):
+    """
+    Use first 20 bytes of hash of sender's public key and data that was signed, to create a unique ID.
+
+    TODO - Later, after ~15 confirmations, contract owner can mine short IDs.
+    """
+    ss = sender + data
+    if type(ss) == unicode:
+        ss = ss.encode('utf8')
+    xx = btc.sha256(ss)[:20]
+    xx = btc.changebase(xx, 16, 58)
+    xx = 'i' + xx
+    return xx
+    
+        
+class CCCoinAPI:
+    def _validate_api_call(self):
+        pass
+    
+    def __init__(self, mode = 'web', offline_mode = True, the_code = False):
+        
+        assert mode in ['web', 'witness', 'audit']
+        
+        self.mode = mode
+
+        self.offline_mode = offline_mode
+        
+        if not offline_mode:
+            self.cw = ContractWrapper(the_code,
+                                      events_callback = self.process_event, #self.rewards_and_auditing_callback)
+                                      )
+
         ## TOK rewards settings:
         
         self.REWARDS_CURATION = 90.0    ## Voting rewards
@@ -713,7 +768,11 @@ class CCCoin2:
         self.NEW_USER_LOCK_DONATION = 1 ## Free LOCK given to new users that signup through this node.
 
         self.LOCK_INTEREST_RATE = 1.0    ## Annual inteest rate paid to LOCK holders
-
+        
+        ##
+        
+        self.all_users = {}
+        
         ###
         
         self.latest_block_num = -1
@@ -741,10 +800,20 @@ class CCCoin2:
         self.prev_block_number = -1
 
     
-    def main_callback(self,
+    def cache_unblind(self, creator_pub, payload_decoded, received_via):
+        """
+        Cache actions in local indexes.
+        
+        Accepts messages from any of:
+        1) New from Web API
+        2) New Blockchain
+        3) Old from Blockchain that were previously seen via Web API.
+        """
+    
+    def process_event(self,
                       msg,
-                      receipt,
-                      confirm_level,
+                      received_via,
+                      receipt = False,
                       do_verify = True,
                       ):
         """
@@ -767,7 +836,7 @@ class CCCoin2:
             "logIndex": "0x00", 
             "transactionIndex": "0x00"
         }
-
+        
         === Example loads_compact(msg['data']):
         
         {
@@ -779,9 +848,9 @@ class CCCoin2:
             }, 
             "payload": "{\"command\":\"unblind\",\"item_type\":\"votes\",\"blind_hash\":\"59f4132fb7d6e430c591cd14a9d1423126dca1ec3f75a3ea1ebed4d2d4454471\",\"blind_reveal\":\"{\\\"votes\\\":[{\\\"item_id\\\":\\\"1\\\",\\\"direction\\\":0}],\\\"rand\\\":\\\"tLKFUfvh0McIDUhr\\\"}\",\"nonce\":1485934064181}", 
         }
-
+        
         ==== Example loads_compact(loads_compact(msg['data'])['payload'])
-
+        
         {
             "nonce": 1485934064181, 
             "item_type": "votes", 
@@ -789,34 +858,33 @@ class CCCoin2:
             "blind_reveal": "{\"votes\":[{\"item_id\":\"1\",\"direction\":0}],\"rand\":\"tLKFUfvh0McIDUhr\"}", 
             "command": "unblind"
         }
-
+        
         """
-        msg['data'] = solidity_string_decode(msg['data'])
 
-        msg['blockNumber'] = ethereum.utils.parse_int_or_hex(msg['blockNumber'])
-        msg["logIndex"] = ethereum.utils.parse_int_or_hex(msg['logIndex'])
-        msg["transactionIndex"] = ethereum.utils.parse_int_or_hex(msg['transactionIndex'])
+        if received_via == 'DIRECT':
 
-        #try:
-        #    loads_compact(msg['data'])
-        #except:
-        #    print 'BAD_MESSAGE'
-        #    assert False
-        #    return
+            payload_decoded = loads_compact(msg['payload'])
+            msg_data = msg
+            msg = {'data':msg}
+            
+        elif received_via in ['BLOCKCHAIN_CONFIRMED', 'BLOCKCHAIN_PENDING']:
+            
+            msg['data'] = solidity_string_decode(msg['data'])
+            msg['blockNumber'] = ethereum.utils.parse_int_or_hex(msg['blockNumber'])
+            msg["logIndex"] = ethereum.utils.parse_int_or_hex(msg['logIndex'])
+            msg["transactionIndex"] = ethereum.utils.parse_int_or_hex(msg['transactionIndex'])
+            msg_data = loads_compact(msg['data'])
+            payload_decoded = loads_compact(msg_data['payload'])
+            
+        else:
+            assert False, repr(received_via)
         
-        print ('====MAIN_CALLBACK:')
+        print ('====PROCESS_EVENT:', received_via)
         print json.dumps(msg, indent=4)
-        
-        msg_data = loads_compact(msg['data'])
-        
-        if confirm_level == 'CONFIRMED':
-            the_db = confirmed_db
-        
-        elif confirm_level == 'PENDING':
-            the_db = pending_db
-        
-        payload_decoded = loads_compact(msg_data['payload'])
-        
+
+
+        the_db = all_dbs[received_via]
+                
         if do_verify:
             is_success = btc.ecdsa_raw_verify(btc.sha256(msg_data['payload'].encode('utf8')),
                                               (msg_data['sig']['sig_v'],
@@ -826,24 +894,10 @@ class CCCoin2:
                                               msg_data['pub'],
                                               )
             assert is_success, 'MESSAGE_VERIFY_FAILED'
-            
-        """
-        Rewards:
-        - wait sufficient time
-        - look at all unblinds
-          + sort stuff into 
 
 
-        LOOP:
-        - get latest block number
-        - newFilter for confirmed blocks
+        item_ids = [] ## For commands that create new items.
         
-        """
-        
-        ## Update internal states:
-        
-        #if msg['blockNumber'] not in self.block_info:
-        #    h = self.c.eth_getBlockByHash()
         
         if payload_decoded['command'] == 'balance':
             
@@ -855,63 +909,135 @@ class CCCoin2:
             
         elif payload_decoded['command'] == 'blind':
             
-            ## Just save earliest blinding blockNumber for later:
-            
-            ## TODO: save token balance at this time.
-            
-            if msg['blockNumber'] not in self.blind_lookup:
-                self.blind_lookup[msg['blockNumber']] = set()
-            self.blind_lookup[msg['blockNumber']].add(payload_decoded['blind_hash'])
-            
-            if payload_decoded['blind_hash'] not in self.blind_lookup_rev:
-                self.blind_lookup_rev[payload_decoded['blind_hash']] = msg['blockNumber']
+            if received_via == 'BLOCKCHAIN_CONFIRMED':
+                
+                ## Just save earliest blinding blockNumber for later:
+                ## TODO: save token balance at this time.
+                
+                if msg['blockNumber'] not in self.blind_lookup:
+                    self.blind_lookup[msg['blockNumber']] = set()
+                self.blind_lookup[msg['blockNumber']].add(payload_decoded['blind_hash'])
+                
+                if payload_decoded['blind_hash'] not in self.blind_lookup_rev:
+                    self.blind_lookup_rev[payload_decoded['blind_hash']] = msg['blockNumber']
         
         elif payload_decoded['command'] == 'unblind':
 
-            ## Add to caches:
+            print ('====COMMAND_UNBLIND:', payload_decoded)
+            
+            creator_pub = msg_data['pub']
+            
+            #creator_address = btc.pubtoaddr(msg_data['pub'])
+
+            creator_address = msg_data['pub'][:20]
             
             payload_inner = loads_compact(payload_decoded['blind_reveal'])
+
+
+            ## Check that reveal matches supposed blind hash:
+
+            hsh = btc.sha256(payload_decoded['blind_reveal'].encode('utf8'))
+
+            hash_fail = False
+            
+            if payload_decoded['blind_hash'] != hsh:
+                
+                print ('HASH_MISMATCH', payload_decoded['blind_hash'], hsh)
+
+                hash_fail = True
+
+                payload_decoded['blind_hash'] = hsh
+            
+            if received_via == 'BLOCKCHAIN_CONFIRMED':
+
+                if payload_decoded['blind_hash'] not in self.blind_lookup_rev:
+                    
+                    ## If blind was never seen, just credit to current block:
+                    
+                    self.blind_lookup_rev[payload_decoded['blind_hash']] = msg['blockNumber']
+                    
+                    if msg['blockNumber'] not in self.blind_lookup:
+                        self.blind_lookup[msg['blockNumber']] = set()
+                    
+                    self.blind_lookup[msg['blockNumber']].add(payload_decoded['blind_hash'])
+
+                
+                    
+
+                    
+                    
+            print ('PAYLOAD_INNER:', payload_inner)
             
             if payload_decoded['item_type'] == 'posts':
                 
+                print ('====COMMAND_UNBLIND_POSTS:', payload_inner)
+                
+                #### FROM PENDING:
+                
+                #assert False, 'WIP'
+                
+                ## Cache post:
+                
                 for post in payload_inner['posts']:
                     
-                    self.posts_by_post_id[post['post_id']] = post
+                    ## Update local caches:
                     
-                    if msg['blockNumber'] not in self.post_ids_by_block_num:
-                        self.post_ids_by_block_num[msg['blockNumber']] = []
-                    self.post_ids_by_block_num[msg['blockNumber']].append(post['post_id'])
+                    post_id = create_long_id(creator_pub, dumps_compact(post))
                     
-                    if post.get('deleted') and (post['post_id'] in self.posts_by_post_id):
-                        self.posts_by_post_id[post['post_id']]['deleted'] = True
+                    item_ids.append(post_id)
+                    
+                    if post_id not in self.posts_by_post_id:                    
+
+                        post['post_id'] = post_id
+                        post['status'] = {'confirmed':False,
+                                          'created_time':int(time()),
+                                          'created_block_num':False, ## Filled in when confirmed via blockchain
+                                          #'score':1,
+                                          #'score_weighted':1,
+                                          'creator_addr':creator_address,
+                                          }
+                        
+                        self.posts_by_post_id[post_id] = post
+                        
+                        if received_via == 'BLOCKCHAIN_CONFIRMED':
+                            
+                            if msg['blockNumber'] not in self.post_ids_by_block_num:
+                                self.post_ids_by_block_num[msg['blockNumber']] = []
+                            self.post_ids_by_block_num[msg['blockNumber']].append(post['post_id'])
+
+                            ## TODO - best way to delete posts?:
+                            
+                            if post.get('deleted') and (post_id in self.posts_by_post_id):
+                                self.posts_by_post_id[post_id]['status']['deleted'] = True
             
             elif payload_decoded['item_type'] == 'votes':
-                ########
+                
                 for vote in payload_inner['votes']:
-                    if vote['direction'] in [1,-1]:
-                        ## Add vote:
-                        the_db['votes'][(msg_data['pub'], vote['item_id'])] = vote['direction']
-                                                    
+
+                    #print ('!!!INCREMENT', vote['item_id'], the_db['scores'].get(vote['item_id']))
+                    
+                    the_db['scores'][vote['item_id']] = the_db['scores'].get(vote['item_id'], 0) + vote['direction'] ## TODO - Not thread safe.
+                    
+                    if vote['direction'] in [1, -1]:
+                        the_db['votes'][(creator_pub, vote['item_id'])] = vote['direction']
+                    
                     elif vote['direction'] == 0:
-                        ## Delete vote:
-                        try: del the_db['votes'][(msg_data['pub'], vote['item_id'])]
-                        except: pass
-                                                
-                    elif vote['direction'] == 2:
-                        ## Add flag:
-                        the_db['flags'][(msg_data['pub'], vote['item_id'])] = vote['direction']
-
-
-                    elif vote['direction'] == -2:
-                        ## Delete flag:
-                        try: del the_db['flags'][(msg_data['pub'], vote['item_id'])]
+                        try: del the_db['votes'][(creator_pub, vote['item_id'])]
                         except: pass
                         
+                    elif vote['direction'] == 2:
+                        the_db['flags'][(creator_pub, vote['item_id'])] = vote['direction']
+                        
+                    elif vote['direction'] == -2:
+                        try: del the_db['flags'][(creator_pub, vote['item_id'])]
+                        except: pass
+                    
                     else:
-                        assert False, vote['direction']
-                ########
-                
-            
+                        assert False, repr(vote['direction'])
+                        
+            else:
+                assert False, ('UNKNOWN_ITEM_TYPE', payload_decoded['item_type'])
+                    
         elif payload_decoded['command'] == 'tok_to_lock':
             pass
         
@@ -923,237 +1049,17 @@ class CCCoin2:
         
 
         ## Block rewards, for sufficiently old actions:
-
-        if (msg['blockNumber'] > self.prev_block_number) and (msg['blockNumber'] % 700 == 699):
-            pass
-            
-        #for xnum in xrange(last_block_rewarded,
-        #                   latest_block_ready,
-        #                   ):
-        #    pass
-
-        self.prev_block_number = msg['blockNumber']
-
-import struct
-import binascii
-
-def solidity_string_decode(ss):
-    ss = binascii.unhexlify(ss[2:])
-    ln = struct.unpack(">I", ss[32:][:32][-4:])[0]
-    return ss[32:][32:][:ln]
-
-def solidity_string_encode(ss):
-    rr = ('\x00' * 31) + ' ' + ('\x00' * 28) + struct.pack(">I", len(ss)) + ss    
-    rem = 32 - (len(rr) % 32)
-    if rem != 0:
-        rr += ('\x00' * (rem))
-    rr = '0x' + binascii.hexlify(rr)
-    return rr
-
-
-import web3
-
-def test_inner(via_cli = False):
-    """
-    Test logging and rewards functions.
-    """
-
-    code = \
-    """
-    pragma solidity ^0.4.6;
-
-    contract CCCoinToken {
-        event TheLog(bytes);
-        function addLog(bytes val) payable { 
-            TheLog(val);
-        }
-    }
-    """
-    
-    cw = ContractWrapper(code)
-    
-    cont_addr = cw.deploy()
-    
-
-    events = [{'payload_decoded': {u'num_items': 1, u'item_type': u'votes', u'blind_hash': u'59f4132fb7d6e430c591cd14a9d1423126dca1ec3f75a3ea1ebed4d2d4454471', u'command': u'blind', u'nonce': 1485934064014}, u'sig': {u'sig_s': u'492f15906be6bb924e7d9b9d954bc989a14c85f5c3282bb4bd23dbf2ad37c206', u'sig_r': u'abc17a3e61ed708a34a2af8bfad3270863f4ee02dd0e009e80119262087015d4', u'sig_v': 28}, u'payload': u'{"command":"blind","item_type":"votes","blind_hash":"59f4132fb7d6e430c591cd14a9d1423126dca1ec3f75a3ea1ebed4d2d4454471","num_items":1,"nonce":1485934064014}', u'pub': u'f2e642e8a5ead4fc8bb3b8776b949e52b23317f1e6a05e99619330cca0fc6f87de28131e696ba7f9d9876d99c952e3ccceda6d3324cdfaf5452cf8ea01372dc1'},
-              {'payload_decoded': {u'nonce': 1485934064181, u'item_type': u'votes', u'blind_hash': u'59f4132fb7d6e430c591cd14a9d1423126dca1ec3f75a3ea1ebed4d2d4454471', u'blind_reveal': u'{"votes":[{"item_id":"1","direction":0}],"rand":"tLKFUfvh0McIDUhr"}', u'command': u'unblind'}, u'sig': {u'sig_s': u'7d0e0d70f1d440e86487881893e27f12192dd23549daa4dc89bb4530aee35c3b', u'sig_r': u'9f074305e710c458ee556f7c6ba236cc57869ad9348c75ce1a47094b9dbaa6dc', u'sig_v': 28}, u'payload': u'{"command":"unblind","item_type":"votes","blind_hash":"59f4132fb7d6e430c591cd14a9d1423126dca1ec3f75a3ea1ebed4d2d4454471","blind_reveal":"{\\"votes\\":[{\\"item_id\\":\\"1\\",\\"direction\\":0}],\\"rand\\":\\"tLKFUfvh0McIDUhr\\"}","nonce":1485934064181}', u'pub': u'f2e642e8a5ead4fc8bb3b8776b949e52b23317f1e6a05e99619330cca0fc6f87de28131e696ba7f9d9876d99c952e3ccceda6d3324cdfaf5452cf8ea01372dc1'},
-              ]
-
-    #events = ['test' + str(x) for x in xrange(3)]
-
-    events = [dumps_compact(x) for x in events[-1:]]
-    
-    for xx in events:
-        cw.send_transaction('addLog(bytes)',
-                            [xx],
-                            block = True,
-                            gas = 1000000,
-                            gas_price = 100,
-                            value= web3.utils.currency.to_wei(1,'ether'),
-                            )
-        if False:
-            print ('SIZE', len(xx))
-            tx = cw.c.call_with_transaction(cw.c.eth_coinbase(),
-                                            cw.contract_address,
-                                            'addLog(bytes)',
-                                            [xx],
-                                            gas = 1000000,
-                                            gas_price = 100,
-                                            value= web3.utils.currency.to_wei(1,'ether'),
-                                            )
-            receipt = cw.c.eth_getTransactionReceipt(tx) ## blocks to ensure transaction is mined
         
-    def cb(msg, receipt, confirm_level):
-        msg['data'] = solidity_string_decode(msg['data'])
-        print ('GOT_LOG:')
-        print json.dumps(msg, indent=4)
-    
-    #cw.events_callback = cb
-    
-    cc2 = CCCoin2()
-    
-    cw.events_callback = cc2.main_callback
-    
-    logs = cw.poll_incoming()
+        if (received_via == 'BLOCKCHAIN_CONFIRMED') and False: ## Received via blockchain.
+            if (msg['blockNumber'] > self.prev_block_number) and (msg['blockNumber'] % 700 == 699):
+                pass
 
-    if False:
-        print ('XXXXXXXXX')
-        params = {"fromBlock": "0x01",
-                  "address": cw.contract_address,
-        }
-        filter = str(cw.c.eth_newFilter(params))
-
-        for xlog in cw.c.eth_getFilterLogs(filter):
-            print json.dumps(xlog, indent=4)
-
-
-
-
-    
-    
-        
-class CCCoinAPI:
-    def _validate_api_call(self):
-        pass
-    
-    def __init__(self, mode = 'web'):
-        
-        assert mode in ['web', 'witness', 'audit']
-        
-        self.mode = mode
-        
-        
-        ## Balances:
-
-        self.balances_tok = {}
-        
-        ## Contract interface:
-        
-        self.cw = ContractWrapper(events_callback = self.rewards_and_auditing_callback)
-
-        ## Check that accounts that are both in the local keystore & the geth keystore:
-                
-        ## Tracking:
-        
-        self.latest_block_number = -1
-        
-        ## User tracking:
-
-        self.user_info = {}
-        self.user_tok_balances = {}
-        self.user_lok_balances = {}
-        
-        ## Caches:
-        
-        self.items_cache = {}     ## {item_id:item}
-        self.recent_voting_hist = []  ## {hour:{item_id:num_votes}}
-        
-        self.cur_unblind_block_num = -1
-        
-        ## Items and Votes DB, split into pending and confirmed (>= confirm_wait_blocks).
-        ## TODO Pending are ignored if not confirmed within a certain amount of time.
-        
-        self.items_pending = {}
-        self.items_confirmed = {}
-        self.votes_pending = {}
-        self.votes_confirmed = {}
-        
-        ## Stores votes until rewards are paid:
-        
-        self.my_blind_votes =  {}          ## {vote_hash: vote_string}
-        self.my_votes_unblinded = {}       ## {vote_hash: block_number}
-
-        ##
-
-        self.poster_ids = {}               ## {item_id:poster_id}
-        
-        self.new_rewards = {}              ## {voter_id:tok}
-
-        self.total_lock_at_block = {}      ## {block_num:tok}
-        self.unblinded_votes_at_block = {} ## {block_num:{sig:(voter_id, item_id, voter_lock)}}
-
-        self.old_voters_for_item = {}      ## {item_id:set(voters)}
-        self.new_voters_for_item = {}      ## {item_id:set(voters)}
-
-        self.sponsors = {}
-
-    def get_current_tok_per_lock(self,
-                                 genesis_tm,
-                                 current_tm,
-                                 start_amount = 1.0,
-                                 ):
-        """
-        Returns current TOK/LOCK exchange rate, based on seconds since contract genesis and annual lock interest rate.
-        """
-        
-        rr = start_amount * ((1.0 + self.LOCK_INTEREST_RATE) ** ((current_tm - genesis_tm) / 31557600.0))
-        
-        return rr
-
-        
-        
-    def rewards_and_auditing_callback(self,
-                                      msg,
-                                      receipt,
-                                      confirm_level,
-                                      do_verify = True,
-                                      ):
-        """
-        """
-        
-        ## Proceed to next step for recently committed transactions:
-
-        if confirm_level == 'CONFIRMED':
-            the_db = confirmed_db
-        
-        elif confirm_level == 'PENDING':
-            the_db = pending_db
-        
-        hh = loads_compact(msg['payload'])
-        
-        if do_verify:
-            is_success = btc.ecdsa_raw_verify(btc.sha256(hh['payload'].encode('utf8')),
-                                              (hh['sig']['sig_v'],
-                                               btc.decode(hh['sig']['sig_r'],16),
-                                               btc.decode(hh['sig']['sig_s'],16),
-                                              ),
-                                              hh['pub'],
-                                              )
-            assert is_success, 'MESSAGE_VERIFY_FAILED'
-        
-        ## Update internal states:
-
-
-        ## Block rewards:
-
-            
-        if confirm_level == 'CONFIRMED':
-
+            ### START REWARDS
             block_number = ethereum.utils.parse_int_or_hex(msg['blockNumber'])
             
             ## REWARDS:
             
-            if (block_number > self.latest_block_number):
+            if (msg['blockNumber'] > self.latest_block_number):
                 
                 ## GOT NEW BLOCK:
 
@@ -1232,107 +1138,50 @@ class CCCoinAPI:
                     self.old_voters_for_item[item_id].update(voters)
                     
                 self.new_voters_for_item.clear()
-                
-            ## HANDLE LOG EVENTS:
+
+            ### END REWARDS
             
-            if hh['t'] == 'vote_blind':
-                ## Got blinded vote, possibly from another node, or previous instance of self:
-                
-                if hh['sig'] in self.my_votes:
-                    ## blind vote submitted from my node:
-                    self.votes_confirmed[hh['sig']] = msg['blockNumber']
-                    del self.votes_pending_confirm[hh['sig']]
-                    
-                else:
-                    ## blind vote submitted from another node:
-                    pass
+            #for xnum in xrange(last_block_rewarded,
+            #                   latest_block_ready,
+            #                   ):
+            #    pass
 
-                self.votes_blind_block[hh['sig']] = (hh['user_id'], msg['blockNumber']) ## latest vote
-            
-            elif hh['t'] == 'vote_unblind':
-                ## Got unblinded vote, possibly from another node, or previous instance of self:
-                
-                old_user_id, old_block_number = self.votes_blind_block[hh['sig']]
-                
-                sig_expected = hmac.new(str(hh['secret']), str(post_data), hashlib.sha512).hexdigest()
-                
-                #assert hh['user_id'] == old_user_id
-                
-                ## ignore outdated votes:
-                
-                if hh['sig'] == old_sig:
-                    
-                    votes = loads_compact(hh['orig'])
+            if not self.offline_mode:
+                self.prev_block_number = msg['blockNumber']
 
-                    orig_block_num = self.lookup_orig_blocknum
-
-                    if orig_block_num > self.cur_unblind_block_num:
-                        ## clear out previous
-                        self.recent_voting_hist[time_bucket] = {}
-                        self.cur_unblind_block_num = orig_block_num
-                    
-                    time_bucket = orig_block_num % 100 ## 
-                    
-                    if time_bucket not in self.recent_voting_hist:
-                        self.recent_voting_hist[time_bucket] = {}
-                    
-                    for vote in votes:
-                        assert vote['dir'] in [1], vote['dir'] ## only positive votes for v1
-                        
-                        self.total_lock_at_block[block_num] += self.user_lok_balances[hh['user_id']]
-
-                        if block_num not in self.unblinded_votes_at_block:
-                            self.unblinded_votes_at_block[block_num] = {}
-                        
-                        if hh['sig'] not in self.unblinded_votes_at_block[block_num]:
-                            self.unblinded_votes_at_block[block_num][hh['sig']] = []
-                        
-                        self.unblinded_votes_at_block[block_num][hh['sig']].append((hh['user_id'],
-                                                                                    vote['item_id'],
-                                                                                    self.user_lok_balances[hh['user_id']],
-                                                                                    ))
-                        
-                        self.recent_voting_hist[time_bucket][vote['item_id']] += 1 #vote['dir']
-            
-            elif hh['t'] == 'update_user':
-
-                ## For now, updates sponsor:
-                
-                if ('user_info' in hh) and ('sponsor' in hh['user_info']):
-                    self.sponsors[msg['address']] = hh['user_info']['sponsor']
-            
-            elif hh['t'] == 'post':
-                
-                post = loads_compact(hh['orig']) ## {'t':'post', 'title': title, 'url':'url', 'user_id':user_id}
-                
-                item_id = web3_sha3(hh['orig'])
-                
-                post['item_id'] = item_id
-
-                self.items_cache[post['item_id']] = post
-                
-                self.poster_ids[item_id] = post
-            
-            elif hh['t'] == 'lock_tok':
-                ## request to lockup tok
-
-                self.balances_tok
+        return {'item_ids':item_ids}
+        
+    def get_current_tok_per_lock(self,
+                                 genesis_tm,
+                                 current_tm,
+                                 start_amount = 1.0,
+                                 ):
+        """
+        Returns current TOK/LOCK exchange rate, based on seconds since contract genesis and annual lock interest rate.
+        """
+        
+        rr = start_amount * ((1.0 + self.LOCK_INTEREST_RATE) ** ((current_tm - genesis_tm) / 31557600.0))
+        
+        return rr
             
         
     def deploy_contract(self,):
         """
         Create new instance of dApp on blockchain.
         """
+
+        assert not self.offline_mode
+        
         self.cw.deploy()
     
         
     def submit_blind_action(self,
-                            vote_data,
+                            blind_data,
                             ):
         """
         Submit blinded vote(s) to blockchain.
         
-        `vote_data` is signed message containing blinded vote(s), of the form:
+        `blind_data` is signed message containing blinded vote(s), of the form:
         
         {   
             "payload": "{\"command\":\"vote_blind\",\"blind_hash\":\"03689918bda30d10475d2749841a22b30ad8d8d163ff2459aa64ed3ba31eea7c\",\"num_items\":1,\"nonce\":1485769087047}",
@@ -1348,37 +1197,48 @@ class CCCoinAPI:
         print ('START_SUBMIT_BLIND_ACTION')
         
         tracking_id = RUN_ID + '|' + str(TRACKING_NUM.increment())
-
+        
         ## Sanity checks:
         
-        assert vote_data['sig']
-        assert vote_data['pub']
-        json.loads(vote_data['payload'])
+        #self.cache_blind(msg_data['pub'], blind_data, 'DIRECT')
+
+        #assert blind_data['sig']
+        #assert blind_data['pub']
+        #json.loads(blind_data['payload'])
         
-        rr = dumps_compact(vote_data)
+        self.process_event(blind_data,
+                           received_via = 'DIRECT',
+                           do_verify = False,
+                           )
         
-        if not TEST_MODE:
+        if not self.offline_mode:
+            
+            dd = dumps_compact(blind_data)
+            
             tx = self.cw.send_transaction('addLog(bytes)',
-                                          [rr],
+                                          [dd],
                                           #send_from = user_id,
                                           gas_limit = self.MAX_GAS_DEFAULT,
                                           callback = False,
                                           )
-
+        
         print ('DONE_SUBMIT_BLIND_ACTION')
         
-        return {'success':True,
-                'tracking_id':tracking_id,
-                "command":"blind_votes",
-                }
+        rr = {'success':True,
+              'tracking_id':tracking_id,
+              'command':'blind_action',
+              }
+        
+        return rr 
+
     
     def submit_unblind_action(self,
-                              vote_data,
+                              msg_data,
                               ):
         """
         Submit unblinded votes to the blockchain.
-
-        `vote_data` is signed message revealing previously blinded vote(s), of the form:
+        
+        `msg_data` is signed message revealing previously blinded vote(s), of the form:
         
         {   
             "payload": "{\"command\":\"vote_unblind\",\"blind_hash\":\"03689918bda30d10475d2749841a22b30ad8d8d163ff2459aa64ed3ba31eea7c\",\"blind_reveal\":\"{\\\"votes\\\":[{\\\"item_id\\\":\\\"99\\\",\\\"direction\\\":1}],\\\"rand\\\":\\\"CnKDXhTSU2bdqX4Y\\\"}\",\"nonce\":1485769087216}",
@@ -1395,71 +1255,42 @@ class CCCoinAPI:
         
         tracking_id = RUN_ID + '|' + str(TRACKING_NUM.increment())
         
-        payload = json.loads(vote_data['payload'])
+        #payload_decoded = json.loads(msg_data['payload'])
         
-        payload_inner = json.loads(payload['blind_reveal'])
+        #payload_inner = json.loads(payload['blind_reveal'])
         
-        ## Immediately add to local caches:
+        #print ('GOT_INNER', payload_inner)
         
-        print ('GOT_INNER', payload_inner)
+        #item_ids = self.cache_unblind(msg_data['pub'], payload_decoded, 'DIRECT')
         
-        if payload['item_type'] == 'votes':
-            
-            for vote in payload_inner['votes']:
-                if vote['direction'] in [1,-1]:
-                    pending_db['votes'][(vote_data['pub'], vote['item_id'])] = vote['direction']
-                elif vote['direction'] == 0:
-                    try:
-                        del pending_db['votes'][(vote_data['pub'], vote['item_id'])]
-                    except:
-                        pass
-                elif vote['direction'] == 2:
-                    pending_db['flags'][(vote_data['pub'], vote['item_id'])] = vote['direction']
-                elif vote['direction'] == -2:
-                    try:
-                        del pending_db['flags'][(vote_data['pub'], vote['item_id'])]
-                    except:
-                        pass
-                else:
-                    assert False, vote['direction']
-                    
-        elif payload['item_type'] == 'posts':
-            assert False, 'WIP'
-
-            print ('INSIDE post_item5')
-
-            if not TEST_MODE:
-                if user_id not in self.working_accounts:
-                    print 'RETURN2'
-                    return {'success':False, 'error':'ACCOUNT_NOT_LOADED'}
-
-            hh['created'] = int(time())
-            hh['item_id'] = item_id
-            hh['score'] = 1
-            hh['score_weighted'] = 1
-
-            ## TODO: put LOCK-weighted scores in cache?
-
-            self.items_cache[item_id] = hh
-
+        item_ids = self.process_event(msg_data,
+                                      received_via = 'DIRECT',
+                                      do_verify = False,
+                                     )['item_ids']
         
-        #print ('CACHED_VOTES', dict(pending_db['votes']))
-            
-        rr = dumps_compact(vote_data)
+        #print ('CACHED_VOTES', dict(all_dbs['DIRECT']['votes']))
         
-        if not TEST_MODE:
+        if not self.offline_mode:
             ## Send to blockchain:
             
+            rr = dumps_compact(msg_data)
+        
             tx = self.cw.send_transaction('addLog(bytes)',
                                           [rr],
                                           #send_from = user_id,
                                           gas_limit = self.MAX_GAS_DEFAULT,
                                           )
-            tracking_id = tx
-        
+            #tracking_id = tx
+            
         print ('DONE_UNBLIND_ACTION')
+
+        rr = {'success':True,
+              'tracking_id':tracking_id,
+              "command":"unblind_action",
+              'item_ids':item_ids,
+              }
         
-        return {'success':True, 'tracking_id':tracking_id, "command":"unblind_action"}
+        return rr
         
     def lockup_tok(self):
         tx = self.cw.send_transaction('lockupTok(bytes)',
@@ -1483,31 +1314,84 @@ class CCCoinAPI:
                                       gas_limit = self.MAX_GAS_DEFAULT,
                                       )
         
-    def get_items(self,
-                  offset = 0,
-                  increment = 50,
-                  sort_by = 'score',
-                  ):
+    def get_sorted_posts(self,
+                         offset = 0,
+                         increment = 50,
+                         sort_by = False,
+                         filter_users = False,
+                         filter_ids = False,
+                         ):
         """
         Get sorted items.
         """
-        print ('GET_ITEMS', offset, increment, sort_by)
+        print ('GET_ITEMS', offset, increment, sort_by, 'filter_users', filter_users, 'filter_ids', filter_ids)
+
+        if (not sort_by) or (sort_by == 'trending'):
+            sort_by = 'score'
+
+        if sort_by == 'new':
+            sort_by = 'created_time'
+            
+        if sort_by == 'best':
+            sort_by = 'score'
+            
+        assert sort_by in ['score', 'created_time'], sort_by
+                
+        ## Filter:
         
-        assert sort_by in ['score', 'created'], sort_by
+        if filter_users:
+            rr = []
+            for xx in self.posts_by_post_id.itervalues():
+                if xx['status']['creator_addr'] in filter_users:
+                    rr.append(xx)
+                    
+        elif filter_ids:
+            rr = []
+            for xx in filter_ids:
+                rr.append(self.posts_by_post_id.get(xx))
         
-        rr = list(sorted([(x[sort_by],x) for x in self.items_cache.values()], reverse=True))
+        else:
+            rr = self.posts_by_post_id.values()
+        
+        ## Use highest score from any consensus state:
+        
+        for via in ['BLOCKCHAIN_CONFIRMED', 'DIRECT']:
+            the_db = all_dbs[via]
+            for post in rr:
+                post['status']['score'] = max(the_db['scores'].get(post['post_id'], 0) + 1, post['status'].get('score', 1))
+
+        ## Sort:
+        
+        rr = list(sorted([(x['status'][sort_by],x) for x in rr], reverse=True))
         rr = rr[offset:offset + increment]
         rr = [y for x,y in rr]
         
         rrr = {'success':True, 'items':rr, 'sort':sort_by}
+
+        print 'GOT', rrr
         
         return rrr
-        
-    
-##
-####
-##
 
+    def get_user_leaderboard(self,
+                             offset = 0,
+                             increment = 50,
+                             ):
+        """
+        Note: Leaderboard only updated when rewards are re-computed.
+        """
+        
+        the_db = all_dbs['BLOCKCHAIN_CONFIRMED']
+        
+        rr = [(x['score'], x) for x in self.all_users.values()]
+        rr = [y for x,y in rr]
+        rr = rr[offset:offset + increment]
+        
+        rrr = {'success':True, 'users':rr}
+        
+        return rrr
+
+        
+        
 
 def trend_detection(input_gen,
                     window_size = 7,
@@ -1634,6 +1518,283 @@ def test_trend_detection():
                     do_ttl = True,
                     )
 
+
+def client_vote(item_id,
+                direction,
+                priv,
+                pub,
+                ):
+    return client_create_blind({'votes':[{'item_id':item_id,
+					'direction':direction,
+                                        }],
+                                'rand': binascii.hexlify(urandom(16)),
+                                },
+                               item_type = 'votes',
+                               priv = priv,
+                               pub = pub,
+                               )
+    
+def client_post(image_url,
+                image_title,
+                priv,
+                pub,
+                ):
+    return client_create_blind({'posts':[{'image_url':image_url,
+	                                  'image_title':image_title,
+                                          }],
+                                'rand': binascii.hexlify(urandom(16)),
+                                },
+                               item_type = 'posts',
+                               priv = priv,
+                               pub = pub,
+                               )
+    
+def client_create_blind(inner,
+                        item_type,
+                        priv = False,
+                        pub = False,
+                       ):
+    """
+    Simulates blind call from frontend.
+    """
+    
+    hidden = dumps_compact(inner)
+    
+    blind_hash = btc.sha256(hidden)
+
+    payload_1 = dumps_compact({'command':'blind',
+                               'item_type':item_type,
+                               'num_items':1,
+                               'blind_hash':blind_hash,
+                               'nonce':int(time() * 1000),
+                               })
+    
+    V, R, S = btc.ecdsa_raw_sign(btc.sha256(payload_1), priv)
+    
+    r_blind = {'payload':payload_1,
+               'sig':{'sig_s':btc.encode(S,16),
+                      'sig_r':btc.encode(R,16),
+                      'sig_v':V,
+                      },
+              'pub':pub,
+              }
+    
+    payload_2 = dumps_compact({'command':'unblind',
+                               'item_type':item_type,
+                               'num_items':1,
+                               'blind_hash':blind_hash,
+                               'blind_reveal':hidden,
+                               'nonce':int(time() * 1000),
+                               })
+    
+    V, R, S = btc.ecdsa_raw_sign(btc.sha256(payload_2), priv)
+    
+    r_unblind = {'payload':payload_2,
+                 'sig':{'sig_s':btc.encode(S,16),
+                        'sig_r':btc.encode(R,16),
+                        'sig_v':V,
+                        },
+                 'pub':pub,
+                 }
+    
+    return r_blind, r_unblind
+    
+
+def test_3(via_cli = False):
+    """
+    Test 3.
+    """
+    offline_mode = False
+
+    code = \
+    """
+    pragma solidity ^0.4.6;
+
+    contract CCCoinToken {
+        event TheLog(bytes);
+        function addLog(bytes val) payable { 
+            TheLog(val);
+        }
+    }
+    """
+    
+    the_pw = 'some big long brainwallet password'
+    priv = btc.sha256(the_pw)
+    pub = btc.privtopub(priv)
+    
+    cccoin = CCCoinAPI(offline_mode = offline_mode,
+                       the_code = code,
+                       )
+
+    if not offline_mode:
+        cccoin.deploy_contract()
+    
+    for x in xrange(3):
+
+        blind_post, unblind_post = client_post('http://' + str(x),
+                                               'The Title ' + str(x),
+                                               priv,
+                                               pub,
+                                               )
+        
+        cccoin.submit_blind_action(blind_post)
+        yy = cccoin.submit_unblind_action(unblind_post)
+
+        item_id = yy['item_ids'][0]
+        
+        for y in xrange(x):
+            blind_vote, unblind_vote = client_vote(item_id,
+                                                   choice([-1, 0, 1,]),
+                                                   priv,
+                                                   pub,
+                                                   )
+
+            cccoin.submit_blind_action(blind_vote)
+            cccoin.submit_unblind_action(unblind_vote)
+
+    cccoin.cw.loop_once()
+    cccoin.cw.loop_once()
+
+    print '====LIST:'
+    
+    for c,xx in enumerate(cccoin.get_sorted_posts()['items']):
+        print '==%03d:' % (c + 1)
+        print json.dumps(xx, indent=4)
+        
+
+        
+def test_2(via_cli = False):
+    """
+    Test 2.
+    """
+    
+    cccoin = CCCoinAPI(offline_mode = True)
+
+    for x in xrange(3):
+    
+        blind_post = {"sig": {"sig_s": "31d1de9b700f0c5e211692a50d5b5ef4939bfa07464d9b5d62a61be7f69d47f2", 
+                              "sig_r": "42d1f4e78f37b77141dd9284c6d05cde323c12e6d6020a38f951e780d5dcade8", 
+                              "sig_v": 27
+                              }, 
+                      "payload": "{\"command\":\"blind\",\"item_type\":\"posts\",\"blind_hash\":\"5162231ccf65cee46791ffbeb18c732a41605abd73b0440bf110a9ba558d2323\",\"num_items\":1,\"nonce\":1486056332736}", 
+                      "pub": "f2e642e8a5ead4fc8bb3b8776b949e52b23317f1e6a05e99619330cca0fc6f87de28131e696ba7f9d9876d99c952e3ccceda6d3324cdfaf5452cf8ea01372dc1"
+                      }
+
+        cccoin.submit_blind_action(blind_post)
+
+        unblind_post = {"payload": "{\"command\":\"unblind\",\"item_type\":\"posts\",\"blind_hash\":\"5162231ccf65cee46791ffbeb18c732a41605abd73b0440bf110a9ba558d2323\",\"blind_reveal\":\"{\\\"rand\\\": \\\"cbHYj7psrXGYNEfA\\\", \\\"posts\\\": [{\\\"image_title\\\": \\\"Sky Diving%d\\\", \\\"image_url\\\": \\\"http://cdn.mediachainlabs.com/hh_1024x1024/943/943a9bdc010a0e8eb823e4e0bcac3ee1.jpg\\\"}]}\",\"nonce\":1486056333038}" % x, 
+                        "sig": {"sig_s": "31d1de9b700f0c5e211692a50d5b5ef4939bfa07464d9b5d62a61be7f69d47f2", 
+                                "sig_r": "42d1f4e78f37b77141dd9284c6d05cde323c12e6d6020a38f951e780d5dcade8", 
+                                "sig_v": 27
+                                }, 
+                        "pub": "f2e642e8a5ead4fc8bb3b8776b949e52b23317f1e6a05e99619330cca0fc6f87de28131e696ba7f9d9876d99c952e3ccceda6d3324cdfaf5452cf8ea01372dc1"
+                        }
+
+        cccoin.submit_unblind_action(unblind_post)
+
+    for x in xrange(3):
+        blind_vote = {u'payload': u'{"command":"blind","item_type":"votes","blind_hash":"3a3282d9fcf4953837ae8de46a90b7998e15b5d6d7b0944d0879bde1983f5a91","num_items":1,"nonce":1486058848406}',
+                      u'pub': u'f2e642e8a5ead4fc8bb3b8776b949e52b23317f1e6a05e99619330cca0fc6f87de28131e696ba7f9d9876d99c952e3ccceda6d3324cdfaf5452cf8ea01372dc1',
+                      u'sig': {u'sig_r': u'53c51f498efdfff2c588b81f4cb82e3b2beb5f2469ea78f47e657d2275dc92b3',
+                               u'sig_s': u'3aebfbd9b5cb1b6a68100dbe32d747f94ccf47855a960cd7dfa2f23194ee8301',
+                               u'sig_v': 27},
+                      }
+
+        cccoin.submit_blind_action(blind_vote)
+
+        unblind_vote = {"payload": "{\"command\":\"unblind\",\"item_type\":\"votes\",\"blind_hash\":\"3a3282d9fcf4953837ae8de46a90b7998e15b5d6d7b0944d0879bde1983f5a91\",\"blind_reveal\":\"{\\\"votes\\\":[{\\\"item_id\\\":\\\"f3f77c486896e44134a3\\\",\\\"direction\\\":1}],\\\"rand\\\":\\\"AY7c7uSUpLwLAF6Q\\\"}\",\"nonce\":1486058848700}", 
+                        "pub": "f2e642e8a5ead4fc8bb3b8776b949e52b23317f1e6a05e99619330cca0fc6f87de28131e696ba7f9d9876d99c952e3ccceda6d3324cdfaf5452cf8ea01372dc1", 
+                        "sig": {
+                            "sig_s": "2177c47105ded1f7d70238abc63482c81039afa2e01e5d054095f982f2bc8ecf", 
+                            "sig_r": "96287bd76e87fce1ef2780a943bf5811c47e82973cc802b476092d66f03a3b1a", 
+                            "sig_v": 28
+                        }, 
+                        }
+    
+        cccoin.submit_unblind_action(unblind_vote)
+        
+    rr = cccoin.get_sorted_posts()
+    
+    print '========POSTS:'
+    print rr
+    
+
+def test_1(via_cli = False):
+    """
+    Test CCCoin logging and rewards functions.
+    """
+
+    code = \
+    """
+    pragma solidity ^0.4.6;
+
+    contract CCCoinToken {
+        event TheLog(bytes);
+        function addLog(bytes val) payable { 
+            TheLog(val);
+        }
+    }
+    """
+    
+    cw = ContractWrapper(code)
+    
+    cont_addr = cw.deploy()
+    
+
+    events = [{'payload_decoded': {u'num_items': 1, u'item_type': u'votes', u'blind_hash': u'59f4132fb7d6e430c591cd14a9d1423126dca1ec3f75a3ea1ebed4d2d4454471', u'command': u'blind', u'nonce': 1485934064014}, u'sig': {u'sig_s': u'492f15906be6bb924e7d9b9d954bc989a14c85f5c3282bb4bd23dbf2ad37c206', u'sig_r': u'abc17a3e61ed708a34a2af8bfad3270863f4ee02dd0e009e80119262087015d4', u'sig_v': 28}, u'payload': u'{"command":"blind","item_type":"votes","blind_hash":"59f4132fb7d6e430c591cd14a9d1423126dca1ec3f75a3ea1ebed4d2d4454471","num_items":1,"nonce":1485934064014}', u'pub': u'f2e642e8a5ead4fc8bb3b8776b949e52b23317f1e6a05e99619330cca0fc6f87de28131e696ba7f9d9876d99c952e3ccceda6d3324cdfaf5452cf8ea01372dc1'},
+              {'payload_decoded': {u'nonce': 1485934064181, u'item_type': u'votes', u'blind_hash': u'59f4132fb7d6e430c591cd14a9d1423126dca1ec3f75a3ea1ebed4d2d4454471', u'blind_reveal': u'{"votes":[{"item_id":"1","direction":0}],"rand":"tLKFUfvh0McIDUhr"}', u'command': u'unblind'}, u'sig': {u'sig_s': u'7d0e0d70f1d440e86487881893e27f12192dd23549daa4dc89bb4530aee35c3b', u'sig_r': u'9f074305e710c458ee556f7c6ba236cc57869ad9348c75ce1a47094b9dbaa6dc', u'sig_v': 28}, u'payload': u'{"command":"unblind","item_type":"votes","blind_hash":"59f4132fb7d6e430c591cd14a9d1423126dca1ec3f75a3ea1ebed4d2d4454471","blind_reveal":"{\\"votes\\":[{\\"item_id\\":\\"1\\",\\"direction\\":0}],\\"rand\\":\\"tLKFUfvh0McIDUhr\\"}","nonce":1485934064181}', u'pub': u'f2e642e8a5ead4fc8bb3b8776b949e52b23317f1e6a05e99619330cca0fc6f87de28131e696ba7f9d9876d99c952e3ccceda6d3324cdfaf5452cf8ea01372dc1'},
+              ]
+
+    #events = ['test' + str(x) for x in xrange(3)]
+
+    events = [dumps_compact(x) for x in events[-1:]]
+    
+    for xx in events:
+        cw.send_transaction('addLog(bytes)',
+                            [xx],
+                            block = True,
+                            gas = 1000000,
+                            gas_price = 100,
+                            value = web3.utils.currency.to_wei(1,'ether'),
+                            )
+        if False:
+            print ('SIZE', len(xx))
+            tx = cw.c.call_with_transaction(cw.c.eth_coinbase(),
+                                            cw.contract_address,
+                                            'addLog(bytes)',
+                                            [xx],
+                                            gas = 1000000,
+                                            gas_price = 100,
+                                            value = web3.utils.currency.to_wei(1,'ether'),
+                                            )
+            receipt = cw.c.eth_getTransactionReceipt(tx) ## blocks to ensure transaction is mined
+        
+    def cb(msg, receipt, confirm_level):
+        msg['data'] = solidity_string_decode(msg['data'])
+        print ('GOT_LOG:')
+        print json.dumps(msg, indent=4)
+    
+    #cw.events_callback = cb
+    
+    #cc2 = CCCoin2()
+    
+    cc2 = CCCoinAPI(offline_mode = True)
+    
+    cw.events_callback = cc2.process_event
+    
+    logs = cw.poll_incoming()
+
+    if False:
+        print ('XXXXXXXXX')
+        params = {"fromBlock": "0x01",
+                  "address": cw.contract_address,
+        }
+        filter = str(cw.c.eth_newFilter(params))
+
+        for xlog in cw.c.eth_getFilterLogs(filter):
+            print json.dumps(xlog, indent=4)
+
+    
 ##
 #### Generic helper functions for web server:
 ##
@@ -2227,7 +2388,7 @@ class Application(tornado.web.Application):
                     (r'/login_2',handle_login_2,),
                     (r'/blind',handle_blind,),
                     (r'/unblind',handle_unblind,),
-                    (r'/submit',handle_submit_item,),
+                    #(r'/submit',handle_submit_item,),
                     (r'/track',handle_track,),
                     (r'/api',handle_api,),
                     (r'/echo',handle_echo,),
@@ -2275,7 +2436,7 @@ class BaseHandler(tornado.web.RequestHandler):
     def cccoin(self,
                ):
         if not hasattr(self.application,'cccoin'):
-            self.application.cccoin = CCCoinAPI(mode = 'web')
+            self.application.cccoin = CCCoinAPI(mode = 'web', the_code = main_contract_code)
         return self.application.cccoin
         
     @tornado.gen.engine
@@ -2295,9 +2456,9 @@ class BaseHandler(tornado.web.RequestHandler):
         from random import choice, randint
         kwargs['choice'] = choice
         kwargs['randint'] = randint
-        kwargs['pending_db'] = pending_db
-        kwargs['confirmed_db'] = confirmed_db
-            
+        kwargs['all_dbs'] = all_dbs
+        kwargs['time'] = time
+        
         r = self.loader.load(template_name).generate(**kwargs)
         
         print ('TEMPLATE TIME',(time()-t0)*1000)
@@ -2339,16 +2500,16 @@ class BaseHandler(tornado.web.RequestHandler):
         else:
             zz = json.dumps(hh, sort_keys = True)
 
-        print ('SENDING', zz)
+        print ('WRITE_JSON_SENDING', zz)
             
         self.write(zz)
                        
         self.finish()
         
 
-    def write_error(self,
-                    status_code,
-                    **kw):
+    def disabled_write_error(self,
+                             status_code,
+                             **kw):
 
         import traceback, sys, os
         try:
@@ -2365,27 +2526,28 @@ class handle_front(BaseHandler):
     def get(self):
 
         session = self.get_current_user()
-        
-        self.render_template('offchain_frontend.html',locals())
-
-        if session:
-            print ('MY_PUB', session['pub'])
-        
-        """
-        as_html = intget(self.get_argument('html','0'), 0)
+        filter_users = [x for x in self.get_argument('user','').split(',') if x]
+        filter_ids = [x for x in self.get_argument('ids','').split(',') if x]
         offset = intget(self.get_argument('offset','0'), 0)
         increment = intget(self.get_argument('increment','50'), 50) or 50
-        sort_by = self.get_argument('sort','score')
+        sort_by = self.get_argument('sort', 'trending')
         
-        items = self.cccoin.get_items(offset = offset,
-                                      increment = increment,
-                                      sort_by = sort_by,
-                                      )
+        
+        the_items = self.cccoin.get_sorted_posts(filter_users = filter_users,
+                                                 filter_ids = filter_ids,
+                                                 sort_by = sort_by,
+                                                 offset = offset,
+                                                 increment = 1000,
+                                                 )
+        
+        num_items = len(the_items['items'])
+        
+        print ('the_items', the_items)
+        
+        self.render_template('offchain_frontend.html',locals())
+        
 
-        print ('ITEMS', items)
-        
-        self.write_json(items)
-        """
+
 
 class handle_login_1(BaseHandler):
     #@check_auth(auth = False)
@@ -2522,9 +2684,8 @@ class handle_unblind(BaseHandler):
     @tornado.gen.coroutine
     def post(self):
         session = self.get_current_user()
-        rr = self.cccoin.submit_unblind_action(session['write_data'])        
+        rr = self.cccoin.submit_unblind_action(session['write_data'])
         self.write_json(rr)
-
 
         
 class handle_track(BaseHandler):
@@ -2557,7 +2718,7 @@ def web(port = 50000,
                                  xheaders=True,
                                  )
         http_server.bind(port)
-        http_server.start(16) # Forks multiple sub-processes
+        http_server.start(1) # Forks multiple sub-processes
         tornado.ioloop.IOLoop.instance().set_blocking_log_threshold(0.5)
         IOLoop.instance().start()
         
@@ -2600,7 +2761,9 @@ functions=['deploy_contract',
            'web',
            'sig_helper',
            'vote_helper',
-           'test_inner',
+           'test_1',
+           'test_2',
+           'test_3',
            ]
 
 def main():    
