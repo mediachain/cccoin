@@ -2396,7 +2396,7 @@ class Application(tornado.web.Application):
                     ]
         
         settings = {'template_path':join(dirname(__file__), 'templates_cccoin'),
-                    'static_path':join(dirname(__file__), 'static_cccoin'),
+                    'static_path':join(dirname(__file__), 'frontend', 'static'),
                     'xsrf_cookies':False,
                     'cookie_secret':'1234',
                     }
@@ -2412,7 +2412,7 @@ class BaseHandler(tornado.web.RequestHandler):
         self._current_user_read = False
         self._current_user_write = False
         
-        self.loader = tornado.template.Loader('templates_cccoin/')
+        self.loader = tornado.template.Loader('frontend/')
 
         #self.auth_state = False
         
@@ -2544,7 +2544,7 @@ class handle_front(BaseHandler):
         
         print ('the_items', the_items)
         
-        self.render_template('offchain_frontend.html',locals())
+        self.render_template('index.html',locals())
         
 
 
