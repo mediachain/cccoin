@@ -16,6 +16,7 @@ const default_roles = ['owner', 'active', 'posting', 'private_messages'];
 
 require('materialize-css')
 const ethUtils = require('ethereumjs-util');
+const moment = require('moment')
 
 function setCookie(key, value) {
   const expires = new Date();
@@ -890,36 +891,45 @@ function isScrolledIntoView(el) {
   return isVisible;
 }
 
-$(document).ready(function(){
+function update_card_timestamps () {
+  if (document.hidden) return;
 
-  function money_update() {
-    if (!document.hidden){
-      $('.card-money-outer').each(function (index, value) {
-        if (Math.random() < 0.1){
-          if (isScrolledIntoView(this)){
-            var amt = (Math.random() * Math.random() * 10) - (Math.random() * Math.random() * 5);
-            $('span',this).html((parseFloat($('span',this).text()) + amt).toFixed(2));
-            //$(this).effect("highlight", {color: "#ddd"}, 2000);
+  $('.card-time-ago').each(function () {
+    const $element = $(this);
+    const createdMillis = $element.data('time-created');
+    const timeString = moment.unix(createdMillis).fromNow();
+    $element.text(timeString);
+  })
+}
 
-            if (amt > 0) {
-              $('.trend-up',this).show().delay(2000).fadeOut(200);
-              $('.trend-down',this).hide();
-            }
-            else {
-              $('.trend-up',this).hide();
-              $('.trend-down',this).show().delay(2000).fadeOut(200);
+function money_update() {
+  if (!document.hidden){
+    $('.card-money-outer').each(function (index, value) {
+      if (Math.random() < 0.1){
+        if (isScrolledIntoView(this)){
+          var amt = (Math.random() * Math.random() * 10) - (Math.random() * Math.random() * 5);
+          $('span',this).html((parseFloat($('span',this).text()) + amt).toFixed(2));
+          //$(this).effect("highlight", {color: "#ddd"}, 2000);
 
-            }
+          if (amt > 0) {
+            $('.trend-up',this).show().delay(2000).fadeOut(200);
+            $('.trend-down',this).hide();
+          }
+          else {
+            $('.trend-up',this).hide();
+            $('.trend-down',this).show().delay(2000).fadeOut(200);
           }
         }
-      });
-    }
+      }
+    });
   }
+}
 
-  var counter = setInterval(money_update, 2100);
-
-});
-
+$(document).ready(function () {
+  update_card_timestamps()
+  setInterval(update_card_timestamps, 3000);
+  setInterval(money_update, 2100);
+})
 
 $(document).ready(function() {
   $('select').material_select();

@@ -16,15 +16,18 @@
   "dependencies": {
     "ethereumjs-util": "^5.1.1",
     "jquery": "^3.1.1",
-    "materialize-css": "^0.98.0"
+    "materialize-css": "^0.98.0",
+    "moment": "^2.17.1"
   },
   "browser": {
     "jquery": "./node_modules/jquery/dist/jquery.min.js",
     "materialize-css": "./node_modules/materialize-css/bin/materialize.js"
   },
-
   "browserify-shim": {
     "jquery": "$",
-    "materialize-css": {"exports": "Materialize", "depends": "jquery:jQuery"}
+    "materialize-css": {
+      "exports": "Materialize",
+      "depends": "jquery:jQuery"
+    }
   }
 }
