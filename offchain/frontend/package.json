@@ -5,15 +5,20 @@
   "main": "index.js",
   "scripts": {
     "build": "browserify ./src/index.js -o static/main-bundle.js -g browserify-shim",
+    "dev": "watchify --debug ./src/index.js -o static/main-bundle.js -g browserify-shim",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "browserify": "^14.1.0",
-    "browserify-shim": "^3.8.13"
+    "browserify-shim": "^3.8.13",
+    "watchify": "^3.9.0"
   },
   "dependencies": {
+    "bigi": "^1.4.2",
+    "bip39": "^2.2.0",
+    "bitcoinjs-lib": "^2.3.0",
     "ethereumjs-util": "^5.1.1",
     "jquery": "^3.1.1",
     "materialize-css": "^0.98.0"
@@ -22,9 +27,11 @@
     "jquery": "./node_modules/jquery/dist/jquery.min.js",
     "materialize-css": "./node_modules/materialize-css/bin/materialize.js"
   },
-
   "browserify-shim": {
     "jquery": "$",
-    "materialize-css": {"exports": "Materialize", "depends": "jquery:jQuery"}
+    "materialize-css": {
+      "exports": "Materialize",
+      "depends": "jquery:jQuery"
+    }
   }
 }

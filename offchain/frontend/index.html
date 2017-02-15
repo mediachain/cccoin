@@ -167,7 +167,7 @@
 				   data-target="modal1" href="#modal1"><i class="material-icons black-text text-lighten-1">add</i></a></li>
 			<li><a class="waves-effect waves-light modal-trigger"
 				   id="login_button"
-				   data-target="modal2" href="#modal2">Login</a></li>
+				   data-target="modal2" href="#modal2">Login / Sign up</a></li>
 			<li id="login_or_username_outer">
 				<!-- Dropdown Trigger -->
 				<a class="dropdown-button btn white black-text"
@@ -629,37 +629,88 @@
 
 <!-- Modal 2 -->
 <div id="modal2" class="modal">
-	<form class="col s12" id="login_form">
 		<div class="modal-content">
-			<h4>Login / Signup</h4>
+                <div class="row">
+                    <ul class="tabs col s12" id=="login_form_tabs">
+                        <li class="tab col s6"><a href="#login">Login</a></li>
+                        <li class="tab col s6"><a href="#signup">Sign up</a></li>
+                    </ul>
+                </div>
+            <div id="login">
+                <form class="col s12" id="login_form">
+                <div class="row" style="margin-bottom:0;">
+                    <div class="col s12">
+                        <!-- START LOGIN -->
+                        <div class="row" style="margin-bottom:0;">
+                            <div class="row modal-form-row">
+                                <div class="input-field col s12">
+                                    <i class="material-icons prefix">account_circle</i>
+                                    <input id="login_username" type="text" class="xvalidate">
+                                    <label for="login_username">Username or WIF</label>
+                                </div>
+                            </div>
+                            <div class="row" style="margin-bottom:0;">
+                                <div class="input-field col s12">
+                                    <i class="material-icons prefix">lock</i>
+                                    <input id="login_password" type="password" class="xvalidate">
+                                    <label for="login_password">Passphrase</label>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- END LOGIN -->
+                        <p id="login_error_text" class="red-text text-darken-2" style="margin-bottom:0;"></p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <input type="submit" class="waves-effect waves-red btn-flat" value="Login">
+                    <!-- modal-action modal-close  -->
+                </div>
+                </form>
+            </div>
 
-			<div class="row" style="margin-bottom:0;">
-				<div class="col s12">
-					<!-- START LOGIN -->
-					<div class="row" style="margin-bottom:0;">
-						<div class="row modal-form-row">
-							<div class="input-field col s12">
-								<input id="login_username" type="text" class="xvalidate">
-								<label for="login_username">Username or WIF</label>
-							</div>
-						</div>
-						<div class="row" style="margin-bottom:0;">
-							<div class="input-field col s12">
-								<input id="login_password" type="password" class="xvalidate">
-								<label for="login_password">Password</label>
-							</div>
-						</div>
-					</div>
-					<!-- END LOGIN -->
-					<p id="login_error_text" class="red-text text-darken-2" style="margin-bottom:0;"></p>
-				</div>
-			</div>
+            <div id="signup">
+                <form class="col s12" id="signup_form">
+
+                    <div class="row" style="margin-bottom:0;">
+                        <div class="col s12">
+                            <!-- START SIGNUP -->
+                            <div class="row" style="margin-bottom:0;">
+                                <div class="row modal-form-row">
+                                    <div class="input-field col s12">
+                                        <i class="material-icons prefix">account_circle</i>
+                                        <input id="signup_username" type="text" class="xvalidate">
+                                        <label for="signup_username">Username or WIF</label>
+                                    </div>
+                                </div>
+                                <div class="row" style="margin-bottom:0;">
+                                    <div class="input-field col s12">
+                                        <i class="material-icons prefix">lock</i>
+                                        <input readonly id="signup_passphrase" type="text" class="xvalidate">
+                                        <label class="active" for="signup_passphrase">Generated Passphrase</label>
+                                    </div>
+                                </div>
+                                <div class="row" style="margin-bottom:0;">
+                                    This passphrase has been generated for you, and <em>must</em> be kept safe and secret!
+                                    It cannot be recovered if you lose it, and if someone else obtains it, they will have
+                                    control over your account.
+                                    <div class="input-field col s12">
+                                        <input id="password_warning_accepted" type="checkbox" class="xvalidate">
+                                        <label for="password_warning_accepted">I understand that this passphrase must be kept safe and secret, and that it cannot be recovered if forgotten or lost</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- END SIGNUP -->
+                            <p id="signup_error_text" class="red-text text-darken-2" style="margin-bottom:0;"></p>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <input type="submit" class="waves-effect waves-red btn-flat" value="Signup">
+                        <!-- modal-action modal-close  -->
+                    </div>
+                </form>
+            </div>
 		</div>
-		<div class="modal-footer">
-			<input type="submit" class="waves-effect waves-red btn-flat" value="Login / Signup">
-			<!-- modal-action modal-close  -->
-		</div>
-	</form>
+
 </div>
 
 </body>

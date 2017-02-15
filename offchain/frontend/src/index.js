@@ -16,6 +16,7 @@ const default_roles = ['owner', 'active', 'posting', 'private_messages'];
 
 require('materialize-css')
 const ethUtils = require('ethereumjs-util');
+const { generatePassphrase, keypairForPassphrase } = require('./key_generation')
 
 function setCookie(key, value) {
   const expires = new Date();
@@ -95,6 +96,16 @@ function toggle_stats(which){
     $('.card_item').removeClass('l3');
     $('.card_item').addClass('l2');
   }
+}
+
+function signUp (username, passphrase) {
+
+  const {privateKey, publicKey, address} = keypairForPassphrase(passphrase)
+  console.log('signUp()', username, passphrase)
+
+  const data_ls = new Buffer(`${username}\t${address || ''}\t${privateKey || ''}\t${publicKey || ''}`).toString('hex');
+
+  // TODO: send signup request to server
 }
 
 function login(username, password){
@@ -192,7 +203,6 @@ function login(username, password){
     alert( "Request1 failed: " + textStatus );
     return false;
   });
-
 }
 
 function grab_keys(){
@@ -651,6 +661,10 @@ function show_login(){
 
 function setup_login_modal(){
 
+  const signupPassphrase = generatePassphrase();
+  $("#signup_passphrase").val(signupPassphrase);
+  Materialize.updateTextFields();
+
   $('#login_form').submit(function(e){
     e.preventDefault();
 
@@ -676,6 +690,31 @@ function setup_login_modal(){
     login(uu, pw);
   });
 
+  $('#signup_form').submit(function(e) {
+    e.preventDefault();
+
+    const $username = $('#signup_username');
+    const $error = $('#signup_error_text');
+    const username = $username.val();
+    const warningAccepted = $('#password_warning_accepted').is(':checked')
+
+    if (username.length < 3) {
+      $error.text('ERROR: Username too short.');
+      $error.css('display', 'block');
+      return false;
+    }
+
+    if (!warningAccepted) {
+      $error.text('ERROR: You must accept the passphrase warning!');
+      $error.css('display', 'block');
+      return false;
+    }
+
+    $error.css('display', 'none');
+    const passphrase =  $('#signup_passphrase').val();
+    signUp(username, passphrase);
+  });
+
   $('#modal2').modal({
     dismissible: true, // Modal can be dismissed by clicking outside of the modal
     opacity: .5, // Opacity of modal background
@@ -686,6 +725,7 @@ function setup_login_modal(){
     ready: function(modal, trigger) { // Callback for Modal open. Modal and trigger parameters available.
       //alert("Ready");
       //console.log(modal, trigger);
+      $('ul.tabs').tabs('select_tab', 'login');
       $("#login_username").focus();
     },
     complete: function() {
