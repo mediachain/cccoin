@@ -23,6 +23,11 @@ CCCoin automatically rewards those who positively contribute in any of a wide va
 
 *Distributed - hiring a thousand guards to protect you with the hope that more is simply better. Trustless - ensuring there's always geater monetary benefit to your guards for them to protect you, rather than to accept bribes to harm you.*
 
+## Tokens
+
+- **CCCoin (CCC)** - The currency of the CCCoin network. It is a ERC20 standard token that can be freely used independently of the CCCoin network.
+- **CCLock (CCL)** - Virtual token of CCCoin that represents locked-up CCC, and can only be slowly disbursed back to its owners over many months in the form of CCC interest bearing payments. Meant to incentivize long-term good behavior by certain participants, in addition to rewarding those wanting to make a long term financial commitment to CCCoin.
+
 ## Technologies
 
 - **Mediachain** - Metadata storage, metadata search, and metadata organization.
@@ -31,4 +36,4 @@ CCCoin automatically rewards those who positively contribute in any of a wide va
 
 ## Status
 
-Upcoming development includes evolving from a single rewards node operating at a time, which can be fired and replaced at any time via a hard fork performed by the users of the network if they collectively choose to do so, toward a softer voting mechanism which will instead allow users to continually vote to elect a consortium of operators for rewards nodes. Further streamlining third party funding of web nodes is also planned.
+Upcoming development includes evolving from a single rewards node operating at a time, which can be fired and replaced at any time via a hard fork performed by the users of the network if they collectively choose to do so, toward a softer hiring and firing mechanism which will instead allow users to continually vote to elect a consortium of operators for rewards nodes. Further streamlining third party funding of web nodes is also planned.
