@@ -680,6 +680,8 @@ CHALLENGES_DB = manager.dict() ## {'public_key':challenge}
 
 SEEN_USERS_DB = manager.dict() ## {'public_key':1}
 
+TAKEN_USERNAMES_DB = manager.dict() ## {'username':1}
+
 TEST_MODE = False
 
 ## Quick in-memory DB:
@@ -1988,7 +1990,6 @@ import ujson
 import tornado.ioloop
 import tornado.web
 from time import time
-from tornadoes import ESConnection
 
 import tornado
 import tornado.options
@@ -2589,34 +2590,54 @@ class handle_login_2(BaseHandler):
         
         if challenge is False:
             print ('LOGIN_2: ERROR UNKNOWN CHALLENGE', challenge)
-            self.write_json({'success':False,
-                             'error':'UNKNOWN_OR_EXPIRED_CHALLENGE',
-                             })
+            self.write_json({"success":False,
+	                     "username_success":False,
+	                     "password_success":False,
+	                     "got_username":"",
+	                     "message":'Unknown or expired challenge during login.',
+	                     })
             return
         
         print 'GOT=============='
         print json.dumps(hh, indent=4)
         print '================='
         
-        is_success = btc.ecdsa_raw_verify(btc.sha256(challenge.encode('utf8')),
-                                          (hh['sig']['sig_v'],
-                                           btc.decode(hh['sig']['sig_r'],16),
-                                           btc.decode(hh['sig']['sig_s'],16)),
-                                          the_pub,
-                                          )
+        ## Check challenge response, i.e. if password is good:
         
-        print ('LOGIN_2_RESULT is_success:', is_success)
+        password_success = btc.ecdsa_raw_verify(btc.sha256(challenge.encode('utf8')),
+                                                (hh['sig']['sig_v'],
+                                                 btc.decode(hh['sig']['sig_r'],16),
+                                                 btc.decode(hh['sig']['sig_s'],16)),
+                                                the_pub,
+                                                )
         
-        self.set_secure_cookie('auth', json.dumps({'created':int(time()),
-                                                   'pub':the_pub,
-                                                   }))
+        ## If username reservation is requested, check that it isn't obviously taken:
+        
+        username_success = True
+        if hh['requested_username'] and (hh['requested_username'] in TAKEN_USERNAMES_DB):
+            username_success = False
 
-        is_new = SEEN_USERS_DB.get(the_pub, False)
-        SEEN_USERS_DB[the_pub] = True
+        ## Check if previously unseen user ID:
         
-        self.write_json({'success':is_success,
+        is_new = SEEN_USERS_DB.get(the_pub, False)
+        
+        ## Write out results:
+        
+        print ('LOGIN_2_RESULT','username_success:', username_success, 'password_success:', password_success)
+        
+        if (username_success and password_success):
+            self.set_secure_cookie('auth', json.dumps({'created':int(time()),
+                                                       'pub':the_pub,
+                                                       }))
+            SEEN_USERS_DB[the_pub] = True
+        
+        self.write_json({"success":password_success,
+	                 "username_success":username_success,
+	                 "password_success":password_success,
+	                 "got_username":hh['requested_username'], ## Todo, concurrency stuff, make request, etc.
+	                 "message":'',
                          'is_new':is_new,
-                         })
+	                 })
         
 
 
