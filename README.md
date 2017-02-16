@@ -1,4 +1,4 @@
-[<img src="https://github.com/mediachainlabs/cccoin/raw/master/images/cccoin_2.png">](https://github.com/mediachainlabs/cccoin/raw/master/images/cccoin_2.png)
+[<img src="https://github.com/mediachainlabs/cccoin/raw/master/images/cccoin_3.png">](https://github.com/mediachainlabs/cccoin/raw/master/images/cccoin_3.png)
 
 **CCCoin** - Image creation, curation, and sharing incentivization network.
 
