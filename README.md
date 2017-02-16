@@ -12,6 +12,7 @@ CCCoin automatically rewards those who positively contribute in any of a wide va
 4. **Fund other's web nodes** - Fund the resource fees for web nodes that are fronting resources to users in a net profitable way, and receive a share of the net rewards. Fund web nodes that are not, incur net a loss. Web nodes are currently responsible for implementing this.
 5. **Run rewards node** - Properly carry out the computations for distributing rewards, and you make money. Distribute rewards poorly, you get forked and cut out.
 6. **Buy the CCCoin token** - Fund the advancement of the entire CCCoin ecosystem of resource providers by supporting the price of CCCoin. Feel the rewards of knowing you're contributing to creative good!
+7. **Loan CCCoin your tokens** - Commit to locking up your CCCoin tokens on the platform for a period of time, in the form of CCLock, and you'll receive interest bearing CCCoin payments back over time. Redeem too much of your CCLock too soon, and face an early withdrawal penalty.
 
 ## Properties
 
