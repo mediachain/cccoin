@@ -14,9 +14,11 @@
 const all_roles = ['owner', 'active', 'posting', 'private_messages', 'witness'];
 const default_roles = ['owner', 'active', 'posting', 'private_messages'];
 
+const $ = require('jquery');
 require('materialize-css')
 const ethUtils = require('ethereumjs-util');
-const moment = require('moment')
+const moment = require('moment');
+const savvior = require('savvior')
 
 function setCookie(key, value) {
   const expires = new Date();
@@ -897,7 +899,7 @@ function update_card_timestamps () {
   $('.card-time-ago').each(function () {
     const $element = $(this);
     const createdMillis = $element.data('time-created');
-    const timeString = moment.unix(createdMillis).fromNow();
+    const timeString = moment.unix(createdMillis).fromNowCustom();
     $element.text(timeString);
   })
 }
@@ -925,10 +927,28 @@ function money_update() {
   }
 }
 
+function setup_card_grid () {
+  savvior.init('#card-grid', {
+    "screen and (max-width: 40em)": { columns: 1 },
+    "screen and (min-width: 40em) and (max-width: 60em)": { columns: 2 },
+    "screen and (min-width: 60em) and (max-width: 80em)": { columns: 3 },
+    "screen and (min-width: 80em)": { columns: 4 },
+  });
+}
+
 $(document).ready(function () {
-  update_card_timestamps()
+  moment.fn.fromNowCustom = function (a) {
+    if (Math.abs(moment().diff(this)) < 45000) {
+      return 'just now';
+    }
+    return this.fromNow(a);
+  }
+
+  update_card_timestamps();
   setInterval(update_card_timestamps, 3000);
   setInterval(money_update, 2100);
+
+  setup_card_grid();
 })
 
 $(document).ready(function() {
@@ -945,3 +965,5 @@ window.do_post = do_post;
 window.do_vote = do_vote;
 window.toggle_fixed = toggle_fixed;
 window.toggle_stats = toggle_stats;
+window.moment = moment;
+window.savvior = savvior;
