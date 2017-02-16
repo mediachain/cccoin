@@ -1,6 +1,6 @@
 [<img src="https://github.com/mediachainlabs/cccoin/raw/master/images/cccoin_2.png">](https://github.com/mediachainlabs/cccoin/raw/master/images/cccoin_2.png)
 
-CCCoin - Image creation, curation, and sharing incentivization network.
+**CCCoin** - Image creation, curation, and sharing incentivization network.
 
 ## Rewards
 
@@ -19,17 +19,15 @@ CCCoin automatically rewards those who positively contribute in any of a wide va
 - **Permissionless** - anyone can contribute without permission, by submitting directly to the blockchain, though those who make negat- **Zero fee** - unlike micro-tipping platforms, CCCoin aims to be completely free to use for content viewers, voters, and submitters. Funds to front the necessary fees are funded by web node operators or those who invest in them.
 ive contributions will likely lose money.
 - **Fault tolerant** - resource providers that disappear or go rogue can be replaced in a meritocratic, permissionless, automated way.
-- **Distributed Computation** - See trustlessness and fault tolerance.
-- **Distributed Control** - See trustlessness.
-- **Decentralized Control** - See trustlessness.
+- **Distributed Computation**, **Distributed Control**, **Decentralized Control** - See trustlessness and fault tolerance.
 
 *Distributed - hiring a thousand guards to protect you with the hope that more is simply better. Trustless - ensuring there's always geater monetary benefit to your guards for them to protect you, rather than to accept bribes to harm you.*
 
 ## Technologies
 
-- **Mediachain** - Used for metadata storage, search and organization.
-- **Ethereum** - Used for ERC20 Token and resolving concurrency conflicts into a single universal transaction ordering.
-- **Custom Consensus and Incentives Core** - Custom blockchain consensus and incentives mechanisms that build upon the above foundations.
+- **Mediachain** - Metadata storage, metadata search, and metadata organization.
+- **Ethereum** - ERC20 Token and resolving concurrency conflicts into a single universal transaction ordering.
+- **CCCoin Core** - Custom blockchain consensus and incentives mechanisms that build upon the above foundations.
 
 ## Status
 
