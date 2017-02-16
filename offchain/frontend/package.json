@@ -16,6 +16,8 @@
     "watchify": "^3.9.0"
   },
   "dependencies": {
+    "bip39": "^2.2.0",
+    "bitcoinjs-lib": "^2.3.0",
     "ethereumjs-util": "^5.1.1",
     "jquery": "^3.1.1",
     "materialize-css": "^0.98.0",
