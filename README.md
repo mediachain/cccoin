@@ -1,8 +1,6 @@
 [<img src="https://github.com/mediachainlabs/cccoin/raw/master/images/cccoin_2.png">](https://github.com/mediachainlabs/cccoin/raw/master/images/cccoin_2.png)
 
-----
-
-Image creation, curation, and sharing incentivization network.
+CCCoin - Image creation, curation, and sharing incentivization network.
 
 ## Earn Rewards
 
