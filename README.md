@@ -16,8 +16,8 @@ CCCoin automatically rewards those who positively contribute in any of a wide va
 ## Properties
 
 - **Trustless** - meritocratic incentives system allowing bad actors to be automatically replaced by good actors.
-- **Permissionless** - anyone can contribute without permission, by submitting directly to the blockchain, though those who make negat- **Zero fee** - unlike micro-tipping platforms, CCCoin aims to be completely free to use for content viewers, voters, and submitters. Funds to front the necessary fees are funded by web node operators or those who invest in them.
-ive contributions will likely lose money.
+- **Permissionless** - anyone can contribute without permission, by submitting directly to the blockchain, though those who make negative contributions will likely lose money.
+- **Zero fee** - unlike micro-tipping platforms, CCCoin aims to be completely free to use for content viewers, voters, and submitters. Funds to front the necessary fees are funded by web node operators or those who invest in them.
 - **Fault tolerant** - resource providers that disappear or go rogue can be replaced in a meritocratic, permissionless, automated way.
 - **Distributed Computation**, **Distributed Control**, **Decentralized Control** - See trustlessness and fault tolerance.
 
