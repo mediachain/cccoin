@@ -31,4 +31,4 @@ CCCoin automatically rewards those who positively contribute in any of a wide va
 
 ## Status
 
-Future planned work includes evolving from a single rewards node operating at a time, which can be fired and replaced at any time via a hard fork performed by the users of the network if they collectively choose to do so, toward a softer voting mechanism which will instead allow users to continually vote to elect a consortium of operators for rewards nodes. Further streamlining third party funding of web nodes is also planned.
+Upcoming development includes evolving from a single rewards node operating at a time, which can be fired and replaced at any time via a hard fork performed by the users of the network if they collectively choose to do so, toward a softer voting mechanism which will instead allow users to continually vote to elect a consortium of operators for rewards nodes. Further streamlining third party funding of web nodes is also planned.
