@@ -55,23 +55,18 @@
 			padding-left:0 !important;
 		}
 
-		.card{margin-top:0;overflow:hidden;}
+		.column { float: left; }
+		.size-1of2 { width: 50%; }
+		.size-1of3 { width: 33.33333%; }
+		.size-1of4 { width: 25%; }
 
+		.card { margin: 5px; overflow: hidden; }
 		.card-image{height:auto;overflow:hidden;background:#000}
-
-		@media only screen and (min-width : 601px) {
-			/*.card-image{height:120px;overflow:hidden;}*/
-			.card-image img{object-fit: cover;height:150px;}
-		}
-
-		@media only screen and (min-width : 993px) {
-			/*.card-image{height:120px;overflow:hidden;}*/
-			.card-image img{object-fit: cover;height:200px;}
-		}
-
-
 		.card-title {display:none;pointer-events: none;font-size:20px !important;padding:24px 5px !important;}
 		.card-content {padding:20px 5px 5px 5px !important;position:relative;}
+
+		.card-creator-text { width: 100%; }
+		.card-time-ago { float: right; }
 
 		.small-card-image{width:50px;overflow:hidden;}
 		.small-card-image img{object-fit: cover;width:50px;}
@@ -93,6 +88,15 @@
 			overflow-x: hidden !important;
 		}
 
+		/* label focus color */
+		.input-field input[type=text]:focus + label, .input-field input[type=password]:focus + label {
+			color: #000;
+		}
+		/* label underline focus color */
+		.input-field input[type=text]:focus, .input-field input[type=password]:focus {
+			border-bottom: 1px solid #000;
+			box-shadow: 0 1px 0 0 #000;
+		}
 
 		table {
 			width: 100%; /* Optional */
@@ -210,7 +214,7 @@
 			<!-- START TAB -->
 			<div id="test1" class="">
 
-				<div class="row" style="margin-top:0;">
+				<div id="card-grid" class="row" style="margin-top:0;">
 
 					{% set the_images = ['http://cdn.mediachainlabs.com/hh_1024x1024/e67/e678ba048045604d38acd690d9947e69.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/820/820340621f49a40937008ce63513e818.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/20b/20bb014a25077fcf77d63b93667980fb.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/102/102ccf5f8c0188f6cbd0fc1b291482b7.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/a30/a30390f1cf723a9a486d05ee919e60dc.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/9e1/9e111af962c0b9fd23488adb62f46b89.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/3b2/3b2c4ef1a6effa024418098f88570c12.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/198/198bc6ad8d7baa0bed2e0b92008dd9c0.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/bcb/bcbe73e3bd3c0d34230ca11782f7525e.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/489/48903fcb8a3e1e35d6b5c2affb1bed9d.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/f97/f9718953454b8f9265bd79b3f6fe7a0c.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/114/114298c126aa43d40bb4f5d28fc94823.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/d00/d0026e733cbbb4f85115f995435b9dd8.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/741/74145db5a026e08b0f3d0d1ffa11b6fc.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/a37/a37cac00ac5879517414bf3eec83efb2.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/dd6/dd65487437594c811cd895140c855a73.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/870/87054d7165e7aee7c65ab678cc3df65f.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/c1d/c1de8f4a872dd7462119aaf1ce425cae.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/01d/01d7fc66654297fda0a4b8160f8a92f2.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/838/838564502cd7f5f6a9866a90390e31ca.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/09e/09ee127367e693345a2dcf821e7feedf.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/904/904a57b3aa16e97f4122979dc131a1ab.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/c3c/c3c469861300b18624c0946e7a3d3b0d.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/0a4/0a4b35910756c897f09902ec90947763.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/b8d/b8d723b14d6d1f2b36d39286ac096e89.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/34d/34da023319ed1013ce311da6895f1b19.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/173/17368c4e12f93f6bc9b4fa6457e84290.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/164/1642db98287e4416e9ca27a5d6e739a5.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/71a/71aa0ccd08a033908aa0922b172b34cc.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/e9c/e9cdebff16f551d0590c415ef56a956f.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/d18/d182f1f27e87d582f2b27eab5d9fb2bf.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/36d/36d71cd3ebfdd38a6d35ab1373f0b8a0.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/c64/c649cdf73d306191993e8ff5155fea4a.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/cd9/cd9f82279af9e225cfddba8a1b0815d6.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/e98/e98919297b1b04814d2d7df8d111324d.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/f49/f491619408546eed5c44f7bb5b6d02bf.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/3a1/3a11d9dda63caf7d7c4ec4f1f51928b3.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/f23/f23db50f9f727a449425262b32fe5aaf.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/c54/c5420b198975a2dea3a31f88760016e4.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/1c6/1c647b7b97b9b54fea7fb278241109d7.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/9b7/9b7d1b19c5be3486e75f91fbec896b88.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/b11/b115df2ff85790f8d2ac52a4859af3ce.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/a63/a638d98e920356aad53d533fa4dccb22.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/482/482aa6a666c6d58a8024b00f558bfa6c.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/643/643b371e8e3a9bd061ec7810a98c89af.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/384/384f3b9726c831dc59d01ba27a799aad.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/308/308a06548995a27b7a56b2f9ae4d37c1.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/ca3/ca3d51ed9c4307278ffbd0e0436251d3.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/301/30159cdda5f701c33f3046a4df17ff86.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/fd9/fd9591aa616e105a9750d01cf0fb0554.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/158/1581e858c5bff62f7023a1abc315ab8c.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/f3e/f3eae751bdd94bfff384d5129dc9e457.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/89a/89acf423a890ada98d23d1eb34cffa6b.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/0d1/0d1e49fa033a7e6b3fd58e0e17d8b680.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/28a/28ab4aad7161044a86f226aa96b7a5bb.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/113/11381a1bb306484443e236c45d75535c.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/cf5/cf595b63cacaa61162eee53326e1ec26.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/0f9/0f9e78a37152c8be919ee705575df71c.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/943/943a9bdc010a0e8eb823e4e0bcac3ee1.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/4aa/4aad4e5bc5e7fa55779337bb561d409e.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/3ec/3ec95e374650107ba65ea39602003dff.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/a36/a36f473e37d65b2aee55648c9aff9afa.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/c7a/c7a2be07d45ee58cc939acadbf1244be.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/a9a/a9a83854ca557460b990d89589585f8e.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/21e/21ef57e4e0b802c19cee4399aa72672d.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/da3/da38cc107a79aa86cc121c0289b5c21d.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/44b/44b7d5e957145e582b8a8d0902cfdefa.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/c21/c214be287672fffe2fc3afe152919de0.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/02d/02d6516cb49a9ebf2d5fd3a1a589de42.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/0b0/0b0b6cdab933fb1cdac772e8b411ed95.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/0bd/0bd03c2d1688f7e47b3b9dc2d886696e.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/b04/b0480419a8f84b7a02dbd9a384677a54.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/7f7/7f73334ea2a4740ceebfc9c92b831c67.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/c50/c50189aa530d613a0d5ee337b5d798db.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/a0a/a0a49223ae35d63f94ae4ba2eb6d76a7.jpg','http://cdn.mediachainlabs.com/hh_1024x1024/25d/25d3edf789c30d06b92d9dd79c238ae6.jpg',] %}
 
@@ -222,8 +226,8 @@
 
 
 					<!-- START CARD -->
-					<div class="col s12 m4 l2 card_item">
-						<div class="card">
+					<div class="card_item">
+						<div class="card" id="card-{{ the_item['post_id'] }}">
 							<div class="card-image">
 								<img class="materialboxed"
 									 data-caption="{{ the_item['image_title'].replace('\n',' ').replace('\r',' ')[:256] }}"
@@ -252,11 +256,11 @@
 								   onclick="do_vote('{{ the_item['post_id'] }}',-1); return false;"
 								   style="bottom:auto;top:-40px;"><i class="material-icons grey-text text-lighten-2">thumb_down</i></a><!-- keyboard_arrow_down -->
 								<div class="row" style="margin:0;">
-									<div class="col s12 m12">
+									<div class="card-creator-text">
 										<a href="/?user={{ the_item['status']['creator_addr'] }}" class="red-text text-accent-4">{{ the_item['status']['creator_addr'][:6] }}</a>
-										<span class="grey-text">{{ int(time() - the_item['status']['created_time']) }}s ago</span>
+										<span class="card-time-ago grey-text" data-time-created="{{ the_item['status']['created_time'] }}"></span>
 									</div>
-									<div class="col s12 m12">
+									<div>
 			<span class="card-money-outer">
 			  $<span id="vote_{{ the_item['post_id'] }}_pow">{{ 0 }}.{{ '%02d' % 1 }}</span>
 			  <i class="trend-up material-icons red-text text-lighten-1" style="font-size:15px;display:none;">arrow_upward</i>
@@ -552,8 +556,6 @@
 				</tr>
 				</tbody>
 			</table>
-
-
 		</div>
 	</div>
 </div>

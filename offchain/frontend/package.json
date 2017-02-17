@@ -20,7 +20,9 @@
     "bitcoinjs-lib": "^2.3.0",
     "ethereumjs-util": "^5.1.1",
     "jquery": "^3.1.1",
-    "materialize-css": "^0.98.0"
+    "materialize-css": "^0.98.0",
+    "moment": "^2.17.1",
+    "savvior": "^0.5.2"
   },
   "browser": {
     "jquery": "./node_modules/jquery/dist/jquery.min.js",

@@ -4,9 +4,12 @@
 const all_roles = ['owner', 'active', 'posting', 'private_messages', 'witness'];
 const default_roles = ['owner', 'active', 'posting', 'private_messages'];
 
+const $ = require('jquery');
 require('materialize-css')
 const ethUtils = require('ethereumjs-util');
-const { generatePassphrase, keypairForPassphrase } = require('./key_generation')
+const moment = require('moment');
+const savvior = require('savvior');
+const { generatePassphrase, keypairForPassphrase } = require('./key_generation');
 
 function setCookie(key, value) {
     const expires = new Date();
@@ -95,39 +98,39 @@ function signup (passphrase, username, cb) {
 }
 
 function login(password, requested_username, the_callback){
-    /* 
+    /*
        Login with password, optionally requesting to be assigned a particular username.
-       
+
        Note: decided not to add blinded-reservation of usernames for now, for user convenience.
-       
+
        Returns JSON containing:
-       - success: `false` to indicate general failure. 
+       - success: `false` to indicate general failure.
        - username_success: `false` to indicate immediate username collision.
        - password_success: `false` to indicate a bad password.
        - got_username: string of your username to use for this session. See below.
        - message: string of optional failure message.
-       
+
        Note that due to concurrency issues, your `got_username` may take forms such as:
        - `bob` - you registered long ago and got what you wanted.
        - `bob-unconfirmed-123` - didn't immediately fail but no idea if you'll win it.
        - `bob-collision-123` - failed to win username you previously requested due to concurrency conflict or attempted attack. You can try requesting another.
     */
-    
+
     if (typeof requested_username === 'undefined'){
 	requested_username = "";
     }
-    
+
     console.log('login()', password, requested_username);
-    
+
     /* Save session info. */
-    
+
     // TODO: check with server that this user exists.
 
     const [owner_pub, owner_priv, owner_addr] = gen_key('owner', password);
     const [posting_pub, posting_priv, posting_addr] = gen_key('posting', password);
-    
+
     localStorage.removeItem('session_data3');
-    
+
     /*
       - Server makes challenge: `random_bytes(16)`
       - User signs challenge.
@@ -136,7 +139,7 @@ function login(password, requested_username, the_callback){
         + encrypted session cookie: `encrypt({"created":timestamp,"pub":user_id}, server_password)`
 	+ working username
     */
-    
+
     // Get challenge:
 
     console.log('request_challenge');
@@ -156,9 +159,9 @@ function login(password, requested_username, the_callback){
 	const dd = hh['challenge'];
 
 	const sig = ethUtils.ecsign(ethUtils.sha256(new Buffer(dd)), new Buffer(posting_priv, 'hex'));
-	
+
 	// Send challenge response:
-	
+
 	const request2 = $.ajax({
 	    dataType: "json",
 	    url: "/login_2",
@@ -172,12 +175,12 @@ function login(password, requested_username, the_callback){
 				       },
 				 })
 	});
-	
+
 	request2.done(function( msg2 ) {
 	    console.log('login.request2.done()', JSON.stringify(msg2));
-	    
+
 	    //console.log('challenge_done',msg2);
-	    
+
 	    if (!msg2['success']){
 		alert('Failed Login.', msg2);
 		if (!(typeof the_callback === 'undefined')){
@@ -188,21 +191,21 @@ function login(password, requested_username, the_callback){
 	    }
 
 	    username = msg2['got_username'];
-	    
+
 	    if (!msg2['is_new']){
 		alert('New account created for "' + username + '".');
 	    }
-	    
+
 	    // Success:
-	    
+
 	    console.log('login success:', username);
 
 	    const data_ls = new Buffer(`${username}\t${owner_addr || ''}\t${posting_priv || ''}\t${posting_pub || ''}`).toString('hex');
-	    
+
 	    localStorage.setItem('session_data3', data_ls);
-	    
+
 	    //check_session();
-	    
+
 	    //location.reload();
 
 	    if (!(typeof the_callback === 'undefined')){
@@ -408,7 +411,7 @@ function blind_something(votes_string, num_items, item_type, posting_priv, posti
 		if (!(typeof success_callback === 'undefined')){
 		    success_callback();
 		}
-		
+
 	    }
 
 
@@ -568,9 +571,9 @@ function do_vote(item_id, direction){
 
 
     // Create blinded votes:
-    
+
     console.log('sign_blind');
-    
+
     const votes_string = JSON.stringify({votes:[{item_id:item_id,
 						 direction:direction_out,
 						}],
@@ -578,7 +581,7 @@ function do_vote(item_id, direction){
 					});
 
     blind_something(votes_string, 1, 'votes', posting_priv, posting_pub);
-    
+
     return;
 }
 
@@ -616,17 +619,17 @@ function show_login(){
 */
 
 function setup_login_modal(){
-    
+
     const signupPassphrase = generatePassphrase();
     $("#signup_passphrase").val(signupPassphrase);
     Materialize.updateTextFields();
-    
+
     $('#login_form').submit(function(e){
 	e.preventDefault();
-	
+
 	const uu = $('#login_username').val();
 	const pw = $('#login_password').val();
-	
+
 	/*
 	if (uu.length < 3){
 	    $('#login_error_text').text('ERROR: Username too short.')
@@ -642,7 +645,7 @@ function setup_login_modal(){
 	    return false;
 	}
 	*/
-	
+
 	$('#login_error_text').css('display','none');
 
 	function cb(rr){
@@ -651,13 +654,13 @@ function setup_login_modal(){
 		$('#login_error_text').css('display','block');
 		$("#login_username").focus();
 	    }
-	    
+
 	    if (! rr['password_success']){
 		$('#login_error_text').text('ERROR: Username too short.')
 		$('#login_error_text').css('display','block');
 		$("#login_password").focus();
 	    }
-	    
+
 	    if (rr['success']){
 		location.reload();
 	    }
@@ -666,13 +669,13 @@ function setup_login_modal(){
 		return false;
 	    }
 	}
-	
+
 	rr = login(pw,
 		   uu,
 		   cb
 		  );
-	
-	
+
+
     });
 
     $('#signup_form').submit(function(e) {
@@ -702,27 +705,27 @@ function setup_login_modal(){
 	    if (! rr['username_success']){
 		$username.focus();
 	    }
-	    
+
 	    if (! rr['password_success']){
 		$('#signup_passphrase').focus();
 	    }
-	    
+
 	    if (rr['success']){
 		location.reload();
 	    }
 	    else {
-		
+
 		$error.text('ERROR: ' + rr['message']);
 		$error.css('display', 'block');
 		$username.focus();
 	    }
 	}
-	
+
 	signup(passphrase,
 	       username,
 	       cb
 	      );
-	
+
     });
 
     $('#modal2').modal({
@@ -940,36 +943,63 @@ function isScrolledIntoView(el) {
     return isVisible;
 }
 
-$(document).ready(function(){
+function update_card_timestamps () {
+  if (document.hidden) return;
 
-    function money_update() {
-	if (!document.hidden){
-	    $('.card-money-outer').each(function (index, value) {
-		if (Math.random() < 0.1){
-		    if (isScrolledIntoView(this)){
-			var amt = (Math.random() * Math.random() * 10) - (Math.random() * Math.random() * 5);
-			$('span',this).html((parseFloat($('span',this).text()) + amt).toFixed(2));
-			//$(this).effect("highlight", {color: "#ddd"}, 2000);
+  $('.card-time-ago').each(function () {
+    const $element = $(this);
+    const createdMillis = $element.data('time-created');
+    const timeString = moment.unix(createdMillis).fromNowCustom();
+    $element.text(timeString);
+  })
+}
 
-			if (amt > 0) {
-			    $('.trend-up',this).show().delay(2000).fadeOut(200);
-			    $('.trend-down',this).hide();
-			}
-			else {
-			    $('.trend-up',this).hide();
-			    $('.trend-down',this).show().delay(2000).fadeOut(200);
+function money_update() {
+  if (!document.hidden){
+    $('.card-money-outer').each(function (index, value) {
+      if (Math.random() < 0.1){
+        if (isScrolledIntoView(this)){
+          var amt = (Math.random() * Math.random() * 10) - (Math.random() * Math.random() * 5);
+          $('span',this).html((parseFloat($('span',this).text()) + amt).toFixed(2));
+          //$(this).effect("highlight", {color: "#ddd"}, 2000);
 
-			}
-		    }
-		}
-	    });
-	}
+          if (amt > 0) {
+            $('.trend-up',this).show().delay(2000).fadeOut(200);
+            $('.trend-down',this).hide();
+          }
+          else {
+            $('.trend-up',this).hide();
+            $('.trend-down',this).show().delay(2000).fadeOut(200);
+          }
+        }
+      }
+    });
+  }
+}
+
+function setup_card_grid () {
+  savvior.init('#card-grid', {
+    "screen and (max-width: 40em)": { columns: 1 },
+    "screen and (min-width: 40em) and (max-width: 60em)": { columns: 2 },
+    "screen and (min-width: 60em) and (max-width: 80em)": { columns: 3 },
+    "screen and (min-width: 80em)": { columns: 4 },
+  });
+}
+
+$(document).ready(function () {
+  moment.fn.fromNowCustom = function (a) {
+    if (Math.abs(moment().diff(this)) < 45000) {
+      return 'just now';
     }
+    return this.fromNow(a);
+  }
 
-    var counter = setInterval(money_update, 2100);
+  update_card_timestamps();
+  setInterval(update_card_timestamps, 3000);
+  setInterval(money_update, 2100);
 
-});
-
+  setup_card_grid();
+})
 
 $(document).ready(function() {
     $('select').material_select();
@@ -985,3 +1015,5 @@ window.do_post = do_post;
 window.do_vote = do_vote;
 window.toggle_fixed = toggle_fixed;
 window.toggle_stats = toggle_stats;
+window.moment = moment;
+window.savvior = savvior;
