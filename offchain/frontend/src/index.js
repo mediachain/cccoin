@@ -8,6 +8,11 @@ const savvior = require('savvior');
 const { generatePassphrase } = require('./key_generation');
 const { grab_keys, do_logout, login, signup } = require('./auth');
 const { submit_posts, submit_votes } = require('./api');
+const {
+  get_button_state,
+  flash_trend_icon,
+  update_card_for_vote
+} = require('./ui');
 
 function toggle_fixed(which){
   console.log('toggle_fixed()');
@@ -72,118 +77,17 @@ function do_post(image_url, image_title){
 
 function do_vote(item_id, direction){
   console.log('do_vote()', item_id, direction);
-
-  /*
-   For V1, we'll send the blinded and unblinded signed messages to the Web
-   node simultaneously.
-   */
-
-  const my_pow = 1.23;
-
-  //var inactive_class = 'grey';
-  const inactive_class = 'white';
-
-  console.log('do_vote', item_id, direction, my_pow);
-
   const keys = grab_keys();
 
   if (!keys) {
     $('#modal2').modal('open');
     return;
   }
-
   const {posting_priv, posting_pub} = keys;
 
-  const voteobj_neg = $('#vote_' + item_id + '_' + -1);
-  const voteobj_pos = $('#vote_' + item_id + '_' + 1);
-  const voteobj_flag = $('#vote_' + item_id + '_' + 2);
-
-  const voteobjpow = $('#vote_' + item_id + '_pow');
-
-  //voteobj.removeClass('grey');
-  //voteobj.addClass('white');
-
-  let is_flagged = 0;
-  let is_neg = 0;
-  let is_pos = 0;
-
-  if (voteobj_flag.hasClass('yellow-text')){
-    is_flagged = 1;
-  }
-  if (voteobj_pos.hasClass('red')){
-    is_pos = 1;
-  }
-  if (voteobj_neg.hasClass('blue')){
-    is_neg = 1;
-  }
-
-  console.log('is_flagged',is_flagged,'is_pos',is_pos,'is_neg',is_neg,'direction',direction);
-
-  let direction_out = direction;
-
-  if (direction == -1){
-    if (is_neg){
-      console.log('aa');
-      direction_out = 0;
-      voteobj_pos.removeClass('red');
-      voteobj_pos.addClass(inactive_class);
-      voteobj_neg.removeClass('blue');
-      voteobj_neg.addClass(inactive_class);
-      voteobjpow.html((parseFloat(voteobjpow.text()) + my_pow).toFixed(2));
-      $('.trend-up',voteobjpow.parent()).show().delay(1000).fadeOut();
-      $('.trend-down',voteobjpow.parent()).hide();
-    }
-    else {
-      console.log('bb');
-      voteobj_pos.removeClass('red');
-      voteobj_pos.addClass(inactive_class);
-      voteobj_neg.removeClass(inactive_class);
-      voteobj_neg.addClass('blue');
-      voteobjpow.html((parseFloat(voteobjpow.text()) - my_pow).toFixed(2));
-      $('.trend-up',voteobjpow.parent()).hide();
-      $('.trend-down',voteobjpow.parent()).show().delay(1000).fadeOut();
-    }
-  }
-  else if (direction == 1){
-    if (is_pos){
-      console.log('cc');
-      direction_out = 0;
-      voteobj_pos.removeClass('red');
-      voteobj_pos.addClass(inactive_class);
-      voteobj_neg.removeClass('blue');
-      voteobj_neg.addClass(inactive_class);
-      voteobjpow.html((parseFloat(voteobjpow.text()) - my_pow).toFixed(2));
-      $('.trend-up',voteobjpow.parent()).hide();
-      $('.trend-down',voteobjpow.parent()).show().delay(1000).fadeOut();
-    }
-    else {
-      console.log('dd');
-      voteobj_pos.removeClass(inactive_class);
-      voteobj_pos.addClass('red');
-      voteobj_neg.removeClass('blue');
-      voteobj_neg.addClass(inactive_class);
-      voteobjpow.html((parseFloat(voteobjpow.text()) + my_pow).toFixed(2));
-      $('.trend-up',voteobjpow.parent()).show().delay(1000).fadeOut();
-      $('.trend-down',voteobjpow.parent()).hide();
-    }
-  }
-  else {
-    direction = 2;
-    if (is_flagged){
-      direction_out = -2;
-      console.log('ee');
-      voteobj_flag.removeClass('yellow-text');
-      voteobj_flag.addClass('text-lighten-3');
-      voteobj_flag.addClass('grey-text');
-    }
-    else {
-      console.log('ff');
-      voteobj_flag.removeClass('grey-text');
-      voteobj_flag.removeClass('text-lighten-3');
-      voteobj_flag.addClass('yellow-text');
-    }
-  }
-
+  const my_pow = 1.23;
+  console.log('do_vote', item_id, direction, my_pow);
+  let direction_out = update_card_for_vote(item_id, direction, my_pow);
 
   // Create blinded votes:
   console.log('submitting vote');
@@ -577,12 +481,10 @@ function money_update() {
           //$(this).effect("highlight", {color: "#ddd"}, 2000);
 
           if (amt > 0) {
-            $('.trend-up',this).show().delay(2000).fadeOut(200);
-            $('.trend-down',this).hide();
+            flash_trend_icon(this, 'up', 2000, 200);
           }
           else {
-            $('.trend-up',this).hide();
-            $('.trend-down',this).show().delay(2000).fadeOut(200);
+            flash_trend_icon(this, 'down', 2000, 200);
           }
         }
       }

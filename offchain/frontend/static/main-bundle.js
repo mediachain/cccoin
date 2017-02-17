@@ -27145,7 +27145,17 @@ module.exports = exports = {
     exports.blind_something(the_string, posts.length, 'posts', posting_priv, posting_pub, callback);
   },
 
-
+  /**
+   * Submit one or more votes to the blockchain
+   * @param {Object | Array.<Object>} votes
+   *  Either a vote JS object, or an array of vote objects.
+   * @param {string} posting_priv
+   *  Hex-encoded private key for user's "posting" role
+   * @param {string} posting_pub
+   *  Hex-encoded public key for posting_priv
+   * @param {Function=} callback
+   *  Will be called with `Error` if something fails, undefined on success
+   */
   submit_votes(votes, posting_priv, posting_pub, callback) {
     if (!Array.isArray(votes)) {
       votes = [votes];
@@ -27161,7 +27171,7 @@ module.exports = exports = {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./util":103,"buffer":10,"ethereumjs-util":35,"jquery":49}],100:[function(require,module,exports){
+},{"./util":104,"buffer":10,"ethereumjs-util":35,"jquery":49}],100:[function(require,module,exports){
 (function (Buffer){
 const $ = require('jquery');
 const ethUtils = require('ethereumjs-util');
@@ -27446,6 +27456,11 @@ const savvior = require('savvior');
 const { generatePassphrase } = require('./key_generation');
 const { grab_keys, do_logout, login, signup } = require('./auth');
 const { submit_posts, submit_votes } = require('./api');
+const {
+  get_button_state,
+  flash_trend_icon,
+  update_card_for_vote
+} = require('./ui');
 
 function toggle_fixed(which){
   console.log('toggle_fixed()');
@@ -27510,118 +27525,17 @@ function do_post(image_url, image_title){
 
 function do_vote(item_id, direction){
   console.log('do_vote()', item_id, direction);
-
-  /*
-   For V1, we'll send the blinded and unblinded signed messages to the Web
-   node simultaneously.
-   */
-
-  const my_pow = 1.23;
-
-  //var inactive_class = 'grey';
-  const inactive_class = 'white';
-
-  console.log('do_vote', item_id, direction, my_pow);
-
   const keys = grab_keys();
 
   if (!keys) {
     $('#modal2').modal('open');
     return;
   }
-
   const {posting_priv, posting_pub} = keys;
 
-  const voteobj_neg = $('#vote_' + item_id + '_' + -1);
-  const voteobj_pos = $('#vote_' + item_id + '_' + 1);
-  const voteobj_flag = $('#vote_' + item_id + '_' + 2);
-
-  const voteobjpow = $('#vote_' + item_id + '_pow');
-
-  //voteobj.removeClass('grey');
-  //voteobj.addClass('white');
-
-  let is_flagged = 0;
-  let is_neg = 0;
-  let is_pos = 0;
-
-  if (voteobj_flag.hasClass('yellow-text')){
-    is_flagged = 1;
-  }
-  if (voteobj_pos.hasClass('red')){
-    is_pos = 1;
-  }
-  if (voteobj_neg.hasClass('blue')){
-    is_neg = 1;
-  }
-
-  console.log('is_flagged',is_flagged,'is_pos',is_pos,'is_neg',is_neg,'direction',direction);
-
-  let direction_out = direction;
-
-  if (direction == -1){
-    if (is_neg){
-      console.log('aa');
-      direction_out = 0;
-      voteobj_pos.removeClass('red');
-      voteobj_pos.addClass(inactive_class);
-      voteobj_neg.removeClass('blue');
-      voteobj_neg.addClass(inactive_class);
-      voteobjpow.html((parseFloat(voteobjpow.text()) + my_pow).toFixed(2));
-      $('.trend-up',voteobjpow.parent()).show().delay(1000).fadeOut();
-      $('.trend-down',voteobjpow.parent()).hide();
-    }
-    else {
-      console.log('bb');
-      voteobj_pos.removeClass('red');
-      voteobj_pos.addClass(inactive_class);
-      voteobj_neg.removeClass(inactive_class);
-      voteobj_neg.addClass('blue');
-      voteobjpow.html((parseFloat(voteobjpow.text()) - my_pow).toFixed(2));
-      $('.trend-up',voteobjpow.parent()).hide();
-      $('.trend-down',voteobjpow.parent()).show().delay(1000).fadeOut();
-    }
-  }
-  else if (direction == 1){
-    if (is_pos){
-      console.log('cc');
-      direction_out = 0;
-      voteobj_pos.removeClass('red');
-      voteobj_pos.addClass(inactive_class);
-      voteobj_neg.removeClass('blue');
-      voteobj_neg.addClass(inactive_class);
-      voteobjpow.html((parseFloat(voteobjpow.text()) - my_pow).toFixed(2));
-      $('.trend-up',voteobjpow.parent()).hide();
-      $('.trend-down',voteobjpow.parent()).show().delay(1000).fadeOut();
-    }
-    else {
-      console.log('dd');
-      voteobj_pos.removeClass(inactive_class);
-      voteobj_pos.addClass('red');
-      voteobj_neg.removeClass('blue');
-      voteobj_neg.addClass(inactive_class);
-      voteobjpow.html((parseFloat(voteobjpow.text()) + my_pow).toFixed(2));
-      $('.trend-up',voteobjpow.parent()).show().delay(1000).fadeOut();
-      $('.trend-down',voteobjpow.parent()).hide();
-    }
-  }
-  else {
-    direction = 2;
-    if (is_flagged){
-      direction_out = -2;
-      console.log('ee');
-      voteobj_flag.removeClass('yellow-text');
-      voteobj_flag.addClass('text-lighten-3');
-      voteobj_flag.addClass('grey-text');
-    }
-    else {
-      console.log('ff');
-      voteobj_flag.removeClass('grey-text');
-      voteobj_flag.removeClass('text-lighten-3');
-      voteobj_flag.addClass('yellow-text');
-    }
-  }
-
+  const my_pow = 1.23;
+  console.log('do_vote', item_id, direction, my_pow);
+  let direction_out = update_card_for_vote(item_id, direction, my_pow);
 
   // Create blinded votes:
   console.log('submitting vote');
@@ -28015,12 +27929,10 @@ function money_update() {
           //$(this).effect("highlight", {color: "#ddd"}, 2000);
 
           if (amt > 0) {
-            $('.trend-up',this).show().delay(2000).fadeOut(200);
-            $('.trend-down',this).hide();
+            flash_trend_icon(this, 'up', 2000, 200);
           }
           else {
-            $('.trend-up',this).hide();
-            $('.trend-down',this).show().delay(2000).fadeOut(200);
+            flash_trend_icon(this, 'down', 2000, 200);
           }
         }
       }
@@ -28069,7 +27981,7 @@ window.toggle_stats = toggle_stats;
 window.moment = moment;
 window.savvior = savvior;
 
-},{"./api":99,"./auth":100,"./key_generation":102,"jquery":49,"materialize-css":56,"moment":57,"savvior":76}],102:[function(require,module,exports){
+},{"./api":99,"./auth":100,"./key_generation":102,"./ui":103,"jquery":49,"materialize-css":56,"moment":57,"savvior":76}],102:[function(require,module,exports){
 const ethUtils = require('ethereumjs-util')
 const bip39 = require('bip39')
 
@@ -28102,6 +28014,122 @@ module.exports = exports = {
 }
 
 },{"bip39":3,"ethereumjs-util":35}],103:[function(require,module,exports){
+const $ = jQuery = require('jquery');
+
+const BUTTON_ACTIVE_CLASS = 'active';
+const BUTTON_INACTIVE_CLASS = 'inactive';
+
+module.exports = exports = {
+  get_button_state (elem) {
+    return $(elem).hasClass(BUTTON_ACTIVE_CLASS);
+  },
+
+  set_button_state (elem, active) {
+    const $elem = $(elem)
+    const toAdd = active ? BUTTON_ACTIVE_CLASS : BUTTON_INACTIVE_CLASS;
+    const toRemove = active ? BUTTON_INACTIVE_CLASS : BUTTON_ACTIVE_CLASS;
+    $elem.removeClass(toRemove);
+    $elem.addClass(toAdd);
+  },
+
+  toggle_button_state (elem) {
+    const state = exports.get_button_state(elem);
+    exports.set_button_state (elem, !state);
+  },
+
+  set_vote_pow (elem, pow) {
+    const $elem = $(elem);
+    const powText = (typeof pow === 'number')
+      ? pow.toFixed(2)
+      : pow;
+
+    $elem.text(powText);
+  },
+
+  get_vote_pow (elem) {
+    return parseFloat($(elem).text());
+  },
+
+  flash_trend_icon (containerElem, direction, showDuration = 1000, fadeDuration = 100) {
+    containerElem = $(containerElem);
+    const upIcon = $('.trend-up', containerElem);
+    const downIcon = $('.trend-down', containerElem);
+
+    if (direction === 'up' || direction === 1) {
+      upIcon.show().delay(showDuration).fadeOut(fadeDuration);
+      downIcon.hide();
+    } else {
+      downIcon.show().delay(showDuration).fadeOut(fadeDuration);
+      upIcon.hide();
+    }
+  },
+
+  update_card_for_vote (postId, vote_direction, pow) {
+    const $upvoteButton = $(`#vote_${postId}_1`);
+    const $downvoteButton = $(`#vote_${postId}_-1`);
+    const $flagButton = $(`#vote_${postId}_2`);
+    const $powSpan = $(`#vote_${postId}_pow`);
+    const $trendContainer = $powSpan.parent();
+
+    if ($upvoteButton.length === 0 || $downvoteButton.length === 0 ||
+        $flagButton.length === 0 || $powSpan.length === 0) {
+      console.warn(`Couldn't get UI elements for ${postId}, bailing out.`);
+      return;
+    }
+
+    let out_direction = vote_direction;
+    let current_pow = exports.get_vote_pow($powSpan);
+    let new_pow = current_pow;
+
+    switch (vote_direction) {
+      case -1: {
+        // downvote button clicked
+        exports.set_button_state($upvoteButton, false);
+        exports.toggle_button_state($downvoteButton);
+        if (exports.get_button_state($downvoteButton)) {
+          new_pow -= pow;
+        } else {
+          out_direction = 0;
+          new_pow += pow;
+        }
+        break;
+      }
+
+      case 1: {
+        // upvote button clicked
+        exports.set_button_state($downvoteButton, false);
+        exports.toggle_button_state($upvoteButton)
+        if (exports.get_button_state($upvoteButton)) {
+          new_pow += pow;
+        } else {
+          out_direction = 0;
+          new_pow -= pow;
+        }
+        break;
+      }
+
+      case 2: {
+        // flag button clicked
+        exports.toggle_button_state($flagButton)
+        if (exports.get_button_state($flagButton) === false) {
+          out_direction = -2;
+        }
+      }
+    }
+
+    if (new_pow > current_pow) {
+      exports.set_vote_pow($powSpan, new_pow);
+      exports.flash_trend_icon($trendContainer, 'up');
+    } else if (new_pow < current_pow) {
+      exports.set_vote_pow($powSpan, new_pow);
+      exports.flash_trend_icon($trendContainer, 'down');
+    }
+
+    return out_direction;
+  }
+}
+
+},{"jquery":49}],104:[function(require,module,exports){
 (function (Buffer){
 const {sha256, ecsign} = require('ethereumjs-util');
 

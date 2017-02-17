@@ -169,7 +169,17 @@ module.exports = exports = {
     exports.blind_something(the_string, posts.length, 'posts', posting_priv, posting_pub, callback);
   },
 
-
+  /**
+   * Submit one or more votes to the blockchain
+   * @param {Object | Array.<Object>} votes
+   *  Either a vote JS object, or an array of vote objects.
+   * @param {string} posting_priv
+   *  Hex-encoded private key for user's "posting" role
+   * @param {string} posting_pub
+   *  Hex-encoded public key for posting_priv
+   * @param {Function=} callback
+   *  Will be called with `Error` if something fails, undefined on success
+   */
   submit_votes(votes, posting_priv, posting_pub, callback) {
     if (!Array.isArray(votes)) {
       votes = [votes];
