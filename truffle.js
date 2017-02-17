@@ -1,13 +1,13 @@
 module.exports = {
   rpc: {
     host:       "localhost",
-    port:       8545,
+    port:       9999,
     gas:        9999999 // For the Solidity tests.
   },
   networks: {
     development: {
       host: "localhost",
-      port: 8545,
+      port: 9999,
       network_id: "*" // Match any network id
     },
     live: {
