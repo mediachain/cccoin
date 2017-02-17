@@ -3,11 +3,6 @@
 """
 """
 
-
-DATA_DIR = 'cccoin_conf/'
-CONTRACT_ADDRESS_FN = DATA_DIR + 'cccoin_contract_address.txt'
-
-
 import bitcoin as btc
 
 from ethjsonrpc.utils import hex_to_dec, clean_hex, validate_block
@@ -29,20 +24,36 @@ from os import urandom
 
 from collections import Counter
 
+######## Settings:
+
+DATA_DIR = 'build_offchain/'
+CONTRACT_ADDRESS_FN = DATA_DIR + 'cccoin_contract_address.txt'
+
+if not exists(DATA_DIR):
+    mkdir(DATA_DIR)
+
 ######## Ethereum parts:
 
+if True:
+    MAIN_CONTRACT_FN = '../contracts/CCCoinToken.sol'
+    print ('USING CONTRACT:', MAIN_CONTRACT_FN)
+    with open(MAIN_CONTRACT_FN) as f:
+        main_contract_code = f.read()
+        
+else:
+    
+    main_contract_code = \
+    """
+    pragma solidity ^0.4.6;
 
-main_contract_code = \
-"""
-pragma solidity ^0.4.6;
-
-contract CCCoin payable {
-    event TheLog(bytes);
-    function addLog(bytes val) { 
-        TheLog(val);
+    contract CCCoin payable {
+        event TheLog(bytes);
+        function addLog(bytes val) { 
+            TheLog(val);
+        }
     }
-}
-""".replace('payable','')
+    """#.replace('payable','') ## for old versions of solidity
+
 
 class ContractWrapper:
     
@@ -262,7 +273,7 @@ def deploy_contract(via_cli = False):
     
     fn = CONTRACT_ADDRESS_FN
     
-    assert not exists(fn), ('File with contract address already exists:', fn)
+    assert not exists(fn), ('File with contract address already exists. Delete this file to ignore:', fn)
     
     if not exists(DATA_DIR):
         mkdir(DATA_DIR)
@@ -1417,7 +1428,7 @@ def test_1(via_cli = False):
         cw.send_transaction('addLog(bytes)',
                             [xx],
                             block = True,
-                            gas = 1000000,
+                            gas_limit = 1000000,
                             gas_price = 100,
                             value = web3.utils.currency.to_wei(1,'ether'),
                             )
