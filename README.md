@@ -5,13 +5,13 @@
 ## Unique
 
 - **Pays you** for positive contributions.
-- **No downloads** runs instantly in any browser without the 40GB download required by Parity or Mist.
-- **Zero fees** for regular end users, unlike micro-tipping.
+- **No downloads** runs instantly in web browser, no 40GB Parity or Mist download.
+- **Zero fees** for regular end users, not micro-tipping.
 - **ERC20 standard** token compatibility.
 
 ## Rewards
 
-CCCoin automatically rewards those who positively contribute in any of a wide variety of ways,
+CCCoin has a rich ecosystem of rewards incentives for a wide variety of roles,
 
 1. **Submit your images** - Submit images that get sufficient votes, and you earn tokens. Submit images that don't get sufficient votes, you start to lose visibility for your newly submitted images.
 2. **Vote on images** - Vote on images that receive sufficient subsequent votes after your vote, and you earn tokens. Vote on images that don't receive sufficient subsequent votes, you start to lose voting power.
