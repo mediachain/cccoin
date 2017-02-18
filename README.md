@@ -4,11 +4,10 @@
 
 ## Unique
 
-- Pays everyone for almost any type of positive contribution.
-- Runs instantly in any modern web browser, while still being a trustless dApp. No downloads. No 40GB Parity install.
-- Private keys remain in the end user's sole possession.
-- Zero fees for regular end users via carefully crafted economic ecosystem. Not another high-friction microtipping platform.
-- ERC20 standard implementation ensures token's survival.
+- **Pays you** for positive contributions.
+- **No downloads** runs instantly in any browser without the 40GB download required by Parity or Mist.
+- **Zero fees** for regular end users, unlike micro-tipping.
+- **ERC20 standard** token compatibility.
 
 ## Rewards
 
