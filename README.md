@@ -4,15 +4,14 @@
 
 ## Unique
 
-- Pays everyone for almost any type of positive contribution.
-- Runs instantly in any modern web browser, while still being a trustless dApp. No downloads. No 40GB Parity install.
-- Private keys remain in the end user's sole possession.
-- Zero fees for regular end users via carefully crafted economic ecosystem. Not another high-friction microtipping platform.
-- ERC20 standard implementation ensures token's survival.
+- **Pays you** for positive contributions.
+- **No downloads** runs instantly in web browser, no 40GB Parity or Mist download.
+- **Zero fees** for regular end users, not micro-tipping.
+- **ERC20 standard** token compatibility.
 
 ## Rewards
 
-CCCoin automatically rewards those who positively contribute in any of a wide variety of ways,
+CCCoin has a rich ecosystem of rewards incentives for a wide variety of roles,
 
 1. **Submit your images** - Submit images that get sufficient votes, and you earn tokens. Submit images that don't get sufficient votes, you start to lose visibility for your newly submitted images.
 2. **Vote on images** - Vote on images that receive sufficient subsequent votes after your vote, and you earn tokens. Vote on images that don't receive sufficient subsequent votes, you start to lose voting power.

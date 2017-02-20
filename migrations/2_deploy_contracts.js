@@ -1,5 +1,5 @@
+var CCCoinToken = artifacts.require("./CCCoinToken.sol");
+
 module.exports = function(deployer) {
-  deployer.deploy(ConvertLib);
-  deployer.autolink();
-  deployer.deploy(MetaCoin);
+  deployer.deploy(CCCoinToken);
 };
