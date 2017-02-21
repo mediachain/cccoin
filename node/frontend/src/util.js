@@ -1,4 +1,7 @@
 const {sha256, ecsign} = require('ethereumjs-util');
+const moment = require('moment');
+
+const JUST_NOW_THRESHOLD = 45000; // < 45 seconds is considered "just now"
 
 module.exports = exports = {
   get_nonce () {
@@ -25,5 +28,14 @@ module.exports = exports = {
       sig_r: sig.r.toString('hex'),
       sig_s: sig.s.toString('hex'),
     }
+  },
+
+  timeAgoString(unixTimestamp) {
+    const m = moment.unix(unixTimestamp);
+    const diff = Math.abs(moment().diff(m));
+    if (diff < JUST_NOW_THRESHOLD) {
+      return 'just now';
+    }
+    return m.fromNow();
   }
 }

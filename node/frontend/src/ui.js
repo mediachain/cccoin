@@ -1,9 +1,33 @@
 const $ = jQuery = require('jquery');
+const savvior = require('savvior');
+const { generatePassphrase } = require('./key_generation');
+const { timeAgoString } = require('./util');
 
 const BUTTON_ACTIVE_CLASS = 'active';
 const BUTTON_INACTIVE_CLASS = 'inactive';
 
+function display_error (elem, message) {
+  const $elem = $(elem);
+  if (message == null || message === false) {
+    $elem.text('');
+    $elem.css('display', 'none');
+    return;
+  }
+
+  $elem.text(message);
+  $elem.css('display', 'block');
+}
+
 module.exports = exports = {
+  isScrolledIntoView(el) {
+    const bounds = el.getBoundingClientRect();
+    const elemTop = bounds.top;
+    const elemBottom = bounds.bottom;
+
+    const isVisible = (elemTop >= 0) && (elemBottom <= window.innerHeight);
+    return isVisible;
+  },
+
   get_button_state (elem) {
     return $(elem).hasClass(BUTTON_ACTIVE_CLASS);
   },
@@ -110,5 +134,352 @@ module.exports = exports = {
     }
 
     return out_direction;
+  },
+
+  update_card_timestamps () {
+    if (document.hidden) return;
+
+    $('.card-time-ago').each(function () {
+      const $element = $(this);
+      const timestamp = $element.data('time-created');
+      $element.text(timeAgoString(timestamp));
+    })
+  },
+
+  update_login_button (username) {
+    if (username) {
+      $('#login_or_username_outer').css('display','list-item');
+      $('#login_button').css('display','none');
+      $('#login_error_text').css('display','none');
+      $('#login_or_username').text(username);
+    } else {
+      $('#login_or_username_outer').css('display','none');
+      $('#login_button').css('display','inline-block');
+    }
+  },
+
+  show_login_modal() {
+    $('#modal2').modal('open');
+  },
+
+  money_update() {
+    if (!document.hidden){
+      $('.card-money-outer').each(function (index, value) {
+        if (Math.random() < 0.1){
+          if (isScrolledIntoView(this)){
+            const powSpan = $('span', this);
+            const amt = (Math.random() * Math.random() * 10) - (Math.random() * Math.random() * 5);
+            const newPow = exports.get_vote_pow(powSpan) + amt;
+            exports.set_vote_pow(powSpan, newPow);
+
+            if (amt > 0) {
+              exports.flash_trend_icon(this, 'up', 2000, 200);
+            }
+            else {
+              exports.flash_trend_icon(this, 'down', 2000, 200);
+            }
+          }
+        }
+      });
+    }
+  },
+
+  init_css () {
+    // Materialize-css initializers
+    $('ul.tabs').tabs();
+    $('.materialboxed').materialbox();
+    $('select').material_select();
+
+
+    // savvior masonry grid init
+    savvior.init('#card-grid', {
+      "screen and (max-width: 40em)": { columns: 1 },
+      "screen and (min-width: 40em) and (max-width: 60em)": { columns: 2 },
+      "screen and (min-width: 60em) and (max-width: 80em)": { columns: 3 },
+      "screen and (min-width: 80em)": { columns: 4 },
+    });
+
+    // do initial timestamp update
+    exports.update_card_timestamps();
+  },
+
+  init_login_modal(apiLogin) {
+    $('#login_or_username').dropdown({
+      inDuration: 300,
+      outDuration: 225,
+      constrainWidth: true, // Does not change width of dropdown to that of the activator
+      hover: false, // Activate on hover
+      gutter: 0, // Spacing from edge
+      belowOrigin: true, // Displays dropdown below the button
+      alignment: 'left', // Displays dropdown with edge aligned to the left of button
+      stopPropagation: false // Stops event propagation
+    });
+
+    const signupPassphrase = generatePassphrase();
+    $("#signup_passphrase").val(signupPassphrase);
+    Materialize.updateTextFields();
+
+    $('#login_form').submit(function(e){
+      e.preventDefault();
+
+      const username = $('#login_username').val();
+      const password = $('#login_password').val();
+      const $error = $('#login_error_text');
+      display_error($error, false);
+
+      function cb (rr){
+        if (! rr['username_success']){
+          display_error($error, 'ERROR: Username too short.');
+          $("#login_username").focus();
+        }
+
+        if (! rr['password_success']){
+          display_error($error, 'ERROR: Invalid passphrase.');
+          $("#login_password").focus();
+        }
+
+        if (rr['success']){
+          location.reload();
+        }
+        else {
+          display_error($error, 'ERROR: ' + rr['message']);
+          return false;
+        }
+      }
+
+      apiLogin(password, username, cb);
+    });
+
+    $('#signup_form').submit(function(e) {
+      e.preventDefault();
+
+      const $username = $('#signup_username');
+      const $error = $('#signup_error_text');
+      const username = $username.val();
+      const warningAccepted = $('#password_warning_accepted').is(':checked')
+
+      if (username.length < 3) {
+        $error.text('ERROR: Username too short.');
+        $error.css('display', 'block');
+        return false;
+      }
+
+      if (!warningAccepted) {
+        $error.text('ERROR: You must accept the passphrase warning!');
+        $error.css('display', 'block');
+        return false;
+      }
+
+      display_error($error, false);
+      const passphrase =  $('#signup_passphrase').val();
+
+      function cb(rr){
+        if (! rr['username_success']){
+          display_error($error, 'ERROR: username taken or invalid.')
+          $username.focus();
+        }
+
+        if (! rr['password_success']){
+          display_error($error, 'ERROR: Invalid passphrase.');
+          $('#signup_passphrase').focus();
+        }
+
+        if (rr['success']){
+          location.reload();
+        }
+        else {
+          display_error($error, 'ERROR: ' + rr['message']);
+          $username.focus();
+        }
+      }
+
+      apiLogin(passphrase, username, cb);
+    });
+
+    $('#modal2').modal({
+      dismissible: true, // Modal can be dismissed by clicking outside of the modal
+      opacity: .5, // Opacity of modal background
+      inDuration: 300, // Transition in duration
+      outDuration: 0, // Transition out duration
+      startingTop: '4%', // Starting top style attribute
+      endingTop: '10%', // Ending top style attribute
+      ready: function(modal, trigger) { // Callback for Modal open. Modal and trigger parameters available.
+        //alert("Ready");
+        //console.log(modal, trigger);
+        $('ul.tabs').tabs('select_tab', 'login');
+        $("#login_username").focus();
+      },
+      complete: function() {
+        //
+      }
+    });
+  },
+
+  init_submit_form(submitPostFn) {
+    $('#modal1').modal({
+      dismissible: true, // Modal can be dismissed by clicking outside of the modal
+      opacity: .5, // Opacity of modal background
+      inDuration: 300, // Transition in duration
+      outDuration: 200, // Transition out duration
+      startingTop: '4%', // Starting top style attribute
+      endingTop: '10%', // Ending top style attribute
+      ready: function(modal, trigger) { // Callback for Modal open. Modal and trigger parameters available.
+        //alert("Ready");
+        //console.log(modal, trigger);
+        $("#image_url").focus();
+      },
+      //complete: function() { alert('Closed'); } // Callback for Modal close
+    });
+
+    $('#submit_form').submit(function(e){
+      e.preventDefault();
+
+      console.log('START submit_form');
+      const $urlField = $('#image_url');
+      const $titleField = $('#image_title');
+      const $error = $('#submit_error_text');
+
+      const image_url = $urlField.val();
+      const image_title = $titleField.val();
+
+      if (image_url.length < 3){
+        display_error($error, $('#submit_error_text'));
+        $("#image_url").focus();
+        return false;
+      }
+
+      if (image_title.length == 0){
+        display_error($error, 'Image title required.')
+        $("#image_title").focus();
+        return false;
+      }
+
+      display_error($error, false);
+      submitPostFn(image_url, image_title);
+    });
+  },
+
+  toggle_fixed_navbar(which){
+    console.log('toggle_fixed()');
+
+    if (which == 1) {
+      $('#main_nav').addClass('fixednav');
+      $('#main_row').addClass('fixednav');
+      $('#stats_panel').addClass('fixednav');
+      $('#show_fixed_button').hide();
+      $('#hide_fixed_button').show();
+    }
+    else {
+      $('#main_nav').removeClass('fixednav');
+      $('#main_row').removeClass('fixednav');
+      $('#stats_panel').removeClass('fixednav');
+      $('#show_fixed_button').show();
+      $('#hide_fixed_button').hide();
+    }
+  },
+
+  toggle_stats(which){
+    console.log('toggle_stats()');
+
+    if (which == 1) {
+      $('#stats_panel').show();
+      $('#show_stats_button').hide();
+      $('#hide_stats_button').show();
+      $('#main_panel').addClass('l9');
+      $('#main_panel').addClass('m8');
+      $('.card_item').removeClass('l2');
+      $('.card_item').addClass('l3');
+    }
+    else {
+      $('#stats_panel').hide();
+      $('#show_stats_button').show();
+      $('#hide_stats_button').hide();
+      $('#main_panel').removeClass('l9');
+      $('#main_panel').removeClass('m8');
+      $('.card_item').removeClass('l3');
+      $('.card_item').addClass('l2');
+    }
+  },
+
+  init_stats_panel () {
+    // -- Round timer
+    let count_start = 60 * 2.5;
+    let count = count_start;
+
+    function zpad(num, size) {
+      const s = "000000000" + num;
+      return s.substr(s.length-size);
+    }
+
+    function the_timer() {
+      count = count - 1;
+      if (count == -1) {
+        count = count_start;
+        return;
+      }
+
+      var seconds = count % 60;
+      var minutes = Math.floor(count / 60);
+      var hours = Math.floor(minutes / 60);
+      minutes %= 60;
+      hours %= 60;
+
+      if (!hours){
+        document.getElementById("round_timer").innerHTML = minutes + ":" + zpad(seconds, 2);
+      }
+      else {
+        document.getElementById("round_timer").innerHTML = hours + ":" + zpad(minutes, 2) + ":" + zpad(seconds, 2);
+      }
+    }
+
+    setInterval(the_timer, 1000);
+
+
+    // -- Transactions table
+
+    // Change the selector if needed
+    let $table = $('.transactions-table'),
+      $bodyCells = $table.find('tbody tr:first').children(),
+      colWidth;
+
+    // Get the tbody columns width array
+    colWidth = $bodyCells.map(function() {
+      return $(this).width();
+    }).get();
+
+    // Set the width of thead columns
+    $table.find('thead tr').children().each(function(i, v) {
+      $(v).width(colWidth[i]);
+    });
+
+    // -- Event log
+
+    $("#events_log").scrollTop(9999);
+    //$("#events_log").scrollTop(0);
+
+    let clone_count = 32;
+    setInterval(function(){
+      if (!document.hidden){
+        let num = Math.floor(Math.random()*5);
+        $( "#event_" + num ).clone().attr('id', 'event_' + clone_count++).prependTo( "#events_log" );
+        $( "#event_" + (clone_count - 1) + " .blocknum a").html("#" + clone_count);
+        //var od = $("#events_log");
+        //od.scrollTop(od[0].scrollHeight);
+
+        if ($("#events_log")[0].scrollHeight >= 9000){
+          $("#events_log tr:nth-child(10)")[0].remove();
+        }
+
+        let scrollToBottom = false;
+        if (($("#events_log")[0].scrollHeight - $("#events_log").scrollTop()) <= $("#events_log").outerHeight() * 2) {
+          scrollToBottom = true;
+        }
+        //console.log("A " + $("#events_log").scrollTop() + " B " + $("#events_log").outerHeight());
+        if (scrollToBottom) {
+          //$("#events_log").scrollTop(9999);
+        }
+      }
+
+    }, 2100);
   }
 }
