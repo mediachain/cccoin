@@ -27547,8 +27547,6 @@ window.do_post = do_post;
 window.do_vote = do_vote;
 window.toggle_fixed = UI.toggle_fixed_navbar;
 window.toggle_stats = UI.toggle_stats;
-window.moment = moment;
-window.savvior = savvior;
 },{"./api":99,"./auth":100,"./ui":103,"jquery":49,"materialize-css":56}],102:[function(require,module,exports){
 const ethUtils = require('ethereumjs-util')
 const bip39 = require('bip39')
@@ -27750,7 +27748,7 @@ module.exports = exports = {
     if (!document.hidden){
       $('.card-money-outer').each(function (index, value) {
         if (Math.random() < 0.1){
-          if (isScrolledIntoView(this)){
+          if (exports.isScrolledIntoView(this)){
             const powSpan = $('span', this);
             const amt = (Math.random() * Math.random() * 10) - (Math.random() * Math.random() * 5);
             const newPow = exports.get_vote_pow(powSpan) + amt;

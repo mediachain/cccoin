@@ -166,7 +166,7 @@ module.exports = exports = {
     if (!document.hidden){
       $('.card-money-outer').each(function (index, value) {
         if (Math.random() < 0.1){
-          if (isScrolledIntoView(this)){
+          if (exports.isScrolledIntoView(this)){
             const powSpan = $('span', this);
             const amt = (Math.random() * Math.random() * 10) - (Math.random() * Math.random() * 5);
             const newPow = exports.get_vote_pow(powSpan) + amt;

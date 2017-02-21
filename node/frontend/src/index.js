@@ -99,5 +99,3 @@ window.do_post = do_post;
 window.do_vote = do_vote;
 window.toggle_fixed = UI.toggle_fixed_navbar;
 window.toggle_stats = UI.toggle_stats;
-window.moment = moment;
-window.savvior = savvior;
