@@ -53,6 +53,11 @@ class MediachainWriter(object):
 
     @gen.coroutine
     def put_data(self, obj):
+        """
+        Store a data object in the mediachain node
+        :param obj: a data object dict to encode and add to the node
+        :return: tornado future that resolves to object multihash string
+        """
         encoded = encode_object(obj)
         req = json.dumps({'data': encoded})
         result = yield self._post('data/put', req)
@@ -66,10 +71,12 @@ class MediachainWriter(object):
         """
         Converts `data` to CBOR and writes it, and a statement referencing it,
         to the mediachain node.
-        Returns a tornado Future, which will resolve to a list of
-        statment id strings.
+        Returns a tornado Future, which will resolve to a string statement ID.
         :param namespace: string namespace to publish to
         :param data: a dict that will be encoded to CBOR and used as the "object" of the MC statement.
+        :param refs: a string or list of strings to use as "WKI"s (external ids) for the statement. e.g. the cccoin post id
+        :param deps: if the statement depends on other data objects, `deps` should contain their hashes
+        :param tags: string or list of strings to use as keywords for queries
         :return: tornado Future, will resolve to list of string statement IDs on success.
         :raise: HTTPError if request fails
         """
