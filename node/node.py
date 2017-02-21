@@ -1,14 +1,35 @@
 #!/usr/bin/env python
 
-"""
-"""
+######## Settings:
+
+DEFAULT_RPC_HOST = '127.0.0.1'
+DEFAULT_RPC_PORT = 9999
+
+DATA_DIR = 'build_offchain/'
+
+DEPLOY_WITH_TRUFFLE = True
+
+if DEPLOY_WITH_TRUFFLE:
+    CONTRACT_ADDRESS_FN = '../build/contracts/CCCoinToken.json'
+else:
+    CONTRACT_ADDRESS_FN = DATA_DIR + 'cccoin_contract_address.txt'
+
+MAIN_CONTRACT_FN = '../contracts/CCCoinToken.sol'
+
+######## Print Settings:
+
+ss = {x:y for x,y in dict(locals()).iteritems() if not x.startswith('__')}
+
+import json
+print 'SETTINGS:'
+print json.dumps(ss, indent=4)
+
+
+######## Imports:
 
 import bitcoin as btc
 
-from ethjsonrpc.utils import hex_to_dec, clean_hex, validate_block
-from ethjsonrpc import EthJsonRpc
-
-import ethereum.utils
+import ethereum.utils ## Slow...
 
 import binascii
 
@@ -24,19 +45,13 @@ from os import urandom
 
 from collections import Counter
 
-######## Settings:
 
-DATA_DIR = 'build_offchain/'
-CONTRACT_ADDRESS_FN = DATA_DIR + 'cccoin_contract_address.txt'
+######## Setup Environment:
 
 if not exists(DATA_DIR):
     mkdir(DATA_DIR)
 
-######## Ethereum parts:
-
 if True:
-    MAIN_CONTRACT_FN = '../contracts/CCCoinToken.sol'
-    print ('USING CONTRACT:', MAIN_CONTRACT_FN)
     with open(MAIN_CONTRACT_FN) as f:
         main_contract_code = f.read()
         
@@ -55,13 +70,30 @@ else:
     """#.replace('payable','') ## for old versions of solidity
 
 
+######## Contract Wrappers:
+
+
+def get_deployed_address():
+    print ('Reading contract address from file...', CONTRACT_ADDRESS_FN)
+    if DEPLOY_WITH_TRUFFLE:
+        with open(CONTRACT_ADDRESS_FN) as f:
+            h = json.loads(f.read())
+        return h['address']
+    else:
+        with open(CONTRACT_ADDRESS_FN) as f:
+            d = f.read()
+        print ('GOT', d)
+        return d
+
+
 class ContractWrapper:
     
     def __init__(self,
-                 the_code,
+                 the_code = False,
+                 the_address = False,
                  events_callback = False,
-                 rpc_host = '127.0.0.1',
-                 rpc_port = 9999, ## 8545,
+                 rpc_host = DEFAULT_RPC_HOST,
+                 rpc_port = DEFAULT_RPC_PORT,
                  confirm_states = {'PENDING':0,
                                    'BLOCKCHAIN_CONFIRMED':15,
                                    'STALE':100,
@@ -79,12 +111,18 @@ class ContractWrapper:
         """
 
         self.the_code = the_code
+        self.contract_address = the_address
+
+        assert self.the_code or self.contract_address
         
         self.loop_block_num = -1
         
         self.confirm_states = confirm_states
         self.events_callback = events_callback
-        
+
+        from ethjsonrpc.utils import hex_to_dec, clean_hex, validate_block
+        from ethjsonrpc import EthJsonRpc
+
         self.c = EthJsonRpc(rpc_host, rpc_port)
 
         self.pending_transactions = {}  ## {tx:callback}
@@ -93,19 +131,9 @@ class ContractWrapper:
 
         self.latest_block_num_done = 0
 
-        if contract_address is False:
-            if exists(CONTRACT_ADDRESS_FN):
-                print ('Reading contract address from file...', CONTRACT_ADDRESS_FN)
-                with open(CONTRACT_ADDRESS_FN) as f:
-                    d = f.read()
-                print ('GOT', d)
-                self.contract_address = d
-            else:
-                self.deploy()
-        else:
-            self.contract_address = contract_address
-
-        assert self.contract_address
+        if the_code:
+            self.deploy()
+        
                     
     def deploy(self):
         print ('DEPLOYING_CONTRACT...')        
@@ -270,6 +298,8 @@ def deploy_contract(via_cli = False):
     """
     Deploy new instance of this dApp to the blockchain.
     """
+
+    assert not DEPLOY_WITH_TRUFFLE, 'Must deploy with truffle instead, because DEPLOY_WITH_TRUFFLE is True.'
     
     fn = CONTRACT_ADDRESS_FN
     
@@ -278,7 +308,7 @@ def deploy_contract(via_cli = False):
     if not exists(DATA_DIR):
         mkdir(DATA_DIR)
     
-    cont = ContractWrapper(main_contract_code)
+    cont = ContractWrapper(the_code = main_contract_code)
     
     addr = cont.deploy()
     
@@ -413,16 +443,25 @@ class CCCoinAPI:
     def _validate_api_call(self):
         pass
     
-    def __init__(self, mode = 'web', offline_mode = True, the_code = False):
+    def __init__(self,
+                 mode = 'web',
+                 offline_testing_mode = False,
+                 the_code = False,
+                 the_address = False,
+                 fake_id_testing_mode = False,
+                 ):
         
-        assert mode in ['web', 'witness', 'audit']
+        assert mode in ['web', 'rewards', 'audit']
         
         self.mode = mode
 
-        self.offline_mode = offline_mode
+        self.fake_id_testing_mode = fake_id_testing_mode
         
-        if not offline_mode:
+        self.offline_testing_mode = offline_testing_mode
+        
+        if the_code:
             self.cw = ContractWrapper(the_code,
+                                      the_address,
                                       events_callback = self.process_event, #self.rewards_and_auditing_callback)
                                       )
 
@@ -474,7 +513,65 @@ class CCCoinAPI:
 
         self.prev_block_number = -1
 
+        #### TESTING VARS FOR test_feed_round():
+        
+        self.map_fake_to_real_user_ids = {}
+        self.map_real_to_fake_user_ids = {}
+
     
+    def test_feed_round(self, actions):
+        """
+        Convenience testing function.
+        - Accepts a list of actions for the current rewards round.
+        - Allows use of fake user_ids and item_ids.
+        - Generates keys for unseen users on the fly.
+        """
+        
+        self.fake_id_testing_mode = True
+        
+        for action in actions:
+            
+            if action['user_id'] not in self.map_fake_to_real_user_ids:
+                the_pw = str(action['user_id'])
+                priv = btc.sha256(the_pw)
+                pub = btc.privtopub(priv)
+                self.map_fake_to_real_user_ids[action['user_id']] = {'priv': priv, 'pub':pub}
+                self.map_real_to_fake_user_ids[pub] = action['user_id']
+            
+            uu = self.map_fake_to_real_user_ids[action['user_id']]
+            priv = uu['priv']
+            pub = uu['pub']
+            
+            if action['action'] == 'post':
+
+                blind_post, unblind_post = client_post(action.get('image_url','NO_URL'), ## Optional for testing
+                                                       action.get('image_title','NO_TITLE'),
+                                                       priv,
+                                                       pub,
+                                                       use_id = action['use_id'],
+                                                       )
+                self.submit_blind_action(blind_post)
+                yy = self.submit_unblind_action(unblind_post)
+            
+            elif action['action'] == 'vote':
+                
+                blind_vote, unblind_vote = client_vote(action['item_id'],
+                                                       action['direction'],
+                                                       priv,
+                                                       pub,
+                                                       )
+                
+                self.submit_blind_action(blind_vote)
+                self.submit_unblind_action(unblind_vote)
+            
+            else:
+                assert False, action
+        
+        self.cw.loop_once()
+        self.cw.loop_once()
+        
+
+
     def cache_unblind(self, creator_pub, payload_decoded, received_via):
         """
         Cache actions in local indexes.
@@ -657,7 +754,10 @@ class CCCoinAPI:
                     
                     ## Update local caches:
                     
-                    post_id = create_long_id(creator_pub, dumps_compact(post))
+                    if self.fake_id_testing_mode:
+                        post_id = post['use_id']
+                    else:
+                        post_id = create_long_id(creator_pub, dumps_compact(post))
                     
                     item_ids.append(post_id)
                     
@@ -781,7 +881,7 @@ class CCCoinAPI:
                         
                         pass
                     
-                    elif self.mode == 'witness':
+                    elif self.mode == 'rewards':
                         
                         rr = dumps_compact({'t':'mint', 'rewards':self.new_rewards})
 
@@ -821,7 +921,7 @@ class CCCoinAPI:
             #                   ):
             #    pass
 
-            if not self.offline_mode:
+            if not self.offline_testing_mode:
                 self.prev_block_number = msg['blockNumber']
 
         return {'item_ids':item_ids}
@@ -845,7 +945,7 @@ class CCCoinAPI:
         Create new instance of dApp on blockchain.
         """
 
-        assert not self.offline_mode
+        assert not self.offline_testing_mode
         
         self.cw.deploy()
     
@@ -886,7 +986,7 @@ class CCCoinAPI:
                            do_verify = False,
                            )
         
-        if not self.offline_mode:
+        if not self.offline_testing_mode:
             
             dd = dumps_compact(blind_data)
             
@@ -945,7 +1045,7 @@ class CCCoinAPI:
         
         #print ('CACHED_VOTES', dict(all_dbs['DIRECT']['votes']))
         
-        if not self.offline_mode:
+        if not self.offline_testing_mode:
             ## Send to blockchain:
             
             rr = dumps_compact(msg_data)
@@ -1213,10 +1313,14 @@ def client_post(image_url,
                 image_title,
                 priv,
                 pub,
+                use_id = False,
                 ):
-    return client_create_blind({'posts':[{'image_url':image_url,
-	                                  'image_title':image_title,
-                                          }],
+    inner = {'image_url':image_url,
+	     'image_title':image_title,
+             }
+    if use_id is not False:
+        inner['use_id'] = use_id
+    return client_create_blind({'posts':[inner],
                                 'rand': binascii.hexlify(urandom(16)),
                                 },
                                item_type = 'posts',
@@ -1273,13 +1377,45 @@ def client_create_blind(inner,
                  }
     
     return r_blind, r_unblind
+
+
+def test_rewards(via_cli = False):
+    """
+    Variety of tests for the rewards function.
+    """
     
+    code = \
+    """
+    pragma solidity ^0.4.6;
+
+    contract CCCoinToken {
+        event TheLog(bytes);
+        function addLog(bytes val) payable { 
+            TheLog(val);
+        }
+    }
+    """
+
+    cca = CCCoinAPI(the_code = code)#the_code = main_contract_code)
+    
+    cca.test_feed_round([{'user_id':'u3','action':'post','use_id':'p1','image_title':'a'},
+                         {'user_id':'u3','action':'post','use_id':'p2','image_title':'b'},
+                         {'user_id':'u1','action':'vote','item_id':'p1','direction':1},
+                         ])
+    
+    cca.test_feed_round([{'user_id':'u2','action':'vote','item_id':'p2','direction':1},
+                         ])
+
+    ## u1 should have a vote reward, u3 should have a post reward:
+
+    
+
 
 def test_3(via_cli = False):
     """
     Test 3.
     """
-    offline_mode = False
+    offline_testing_mode = False
 
     code = \
     """
@@ -1297,11 +1433,10 @@ def test_3(via_cli = False):
     priv = btc.sha256(the_pw)
     pub = btc.privtopub(priv)
     
-    cccoin = CCCoinAPI(offline_mode = offline_mode,
-                       the_code = code,
+    cccoin = CCCoinAPI(the_code = code,
                        )
 
-    if not offline_mode:
+    if not offline_testing_mode:
         cccoin.deploy_contract()
     
     for x in xrange(3):
@@ -1343,7 +1478,7 @@ def test_2(via_cli = False):
     Test 2.
     """
     
-    cccoin = CCCoinAPI(offline_mode = True)
+    cccoin = CCCoinAPI(offline_testing_mode = True)
 
     for x in xrange(3):
     
@@ -1453,7 +1588,7 @@ def test_1(via_cli = False):
     
     #cc2 = CCCoin2()
     
-    cc2 = CCCoinAPI(offline_mode = True)
+    cc2 = CCCoinAPI(offline_testing_mode = True)
     
     cw.events_callback = cc2.process_event
     
@@ -1469,7 +1604,10 @@ def test_1(via_cli = False):
         for xlog in cw.c.eth_getFilterLogs(filter):
             print json.dumps(xlog, indent=4)
 
-    
+
+
+
+            
 ##
 #### Generic helper functions for web server:
 ##
@@ -1646,7 +1784,7 @@ def setup_main(functions,
     
     set_console_title(title)
     
-    print 'STARTING ',f + '()'
+    print 'STARTING:',f + '()'
 
     ff=glb[f]
 
@@ -2422,9 +2560,9 @@ def web(port = 50000,
     print ('WEB_STARTED')
 
 
-def witness():
+def rewards():
     """
-    Witness mode: Web server = No, Write rewards = Yes, Audit rewards = No.
+    Rewards mode: Web server = No, Write rewards = Yes, Audit rewards = No.
     
     Only run 1 instance of this witness, per community (contract instantiation.)
     
@@ -2432,7 +2570,7 @@ def witness():
     the ethereum contract (you called `deploy_contract`) in order to distribute rewards.
     """
     
-    xx = CCCoinAPI(mode = 'witness')
+    xx = CCCoinAPI(mode = 'rewards')
     
     while True:
         xx.loop_once()
@@ -2450,7 +2588,7 @@ def audit():
 
         
 functions=['deploy_contract',
-           'witness',
+           'rewards',
            'audit',
            'web',
            'sig_helper',
@@ -2458,6 +2596,7 @@ functions=['deploy_contract',
            'test_1',
            'test_2',
            'test_3',
+           'test_rewards',
            ]
 
 def main():    
