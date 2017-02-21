@@ -1,9 +1,33 @@
 import json
+import cbor
+import base64
 from tornado import gen
 from tornado.httpclient import AsyncHTTPClient, HTTPRequest
 from urlparse import urljoin
 
 DEFAULT_MC_API_URL='http://localhost:9002'
+
+def ensure_list(x):
+    if x is None:
+        return []
+    if isinstance(x, list):
+        return x
+    return [x]
+
+def ensure_unicode_dict(d):
+    new = {}
+    for k, v in d.iteritems():
+        k = unicode(k)
+        if isinstance(v, dict):
+            v = ensure_unicode_dict(v)
+        elif isinstance(v, basestring):
+            v = unicode(v)
+        new[k] = v
+    return new
+
+def encode_object(obj):
+    obj = ensure_unicode_dict(obj)
+    return base64.b64encode(cbor.dumps(obj))
 
 class MediachainWriter(object):
     """
@@ -28,21 +52,33 @@ class MediachainWriter(object):
                 body=body))
 
     @gen.coroutine
-    def publish(self, namespace, data):
+    def put_data(self, obj):
+        encoded = encode_object(obj)
+        req = json.dumps({'data': encoded})
+        result = yield self._post('data/put', req)
+        obj_hash = result.body.strip()
+        print('put object, hash: ', obj, obj_hash)
+        raise gen.Return(obj_hash)
+
+
+    @gen.coroutine
+    def publish(self, namespace, data, refs=None, deps=None, tags=None):
         """
-        Converts `data` to json and writes to the mediachain node.
+        Converts `data` to CBOR and writes it, and a statement referencing it,
+        to the mediachain node.
         Returns a tornado Future, which will resolve to a list of
         statment id strings.
         :param namespace: string namespace to publish to
-        :param data: either a dict or a list of dicts that can be converted to JSON objects
+        :param data: a dict that will be encoded to CBOR and used as the "object" of the MC statement.
         :return: tornado Future, will resolve to list of string statement IDs on success.
         :raise: HTTPError if request fails
         """
-        if isinstance(data, list):
-            objects = data
-        else:
-            objects = [data]
 
-        ndjson = '\n'.join(map(json.dumps, objects))
-        response = yield self._post('publish/' + namespace, ndjson)
-        raise gen.Return(response.body.strip().split('\n'))
+        object_ref = yield self.put_data(data)
+        stmt = {'object': object_ref,
+                'refs': ensure_list(refs),
+                'deps': ensure_list(deps),
+                'tags': ensure_list(tags)}
+
+        response = yield self._post('publish/' + namespace, json.dumps(stmt))
+        raise gen.Return(response.body.strip())
