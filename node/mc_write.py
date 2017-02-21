@@ -14,19 +14,20 @@ def ensure_list(x):
         return x
     return [x]
 
-def ensure_unicode_dict(d):
-    new = {}
-    for k, v in d.iteritems():
-        k = unicode(k)
-        if isinstance(v, dict):
-            v = ensure_unicode_dict(v)
-        elif isinstance(v, basestring):
-            v = unicode(v)
-        new[k] = v
-    return new
+def ensure_unicode(val):
+    if isinstance(val, basestring):
+        return unicode(val)
+    if isinstance(val, dict):
+        new = {}
+        for k, v in val.iteritems():
+            new[ensure_unicode(k)] = ensure_unicode(v)
+        return new
+    if isinstance(val, list):
+        return map(ensure_unicode, val)
+    return val
 
 def encode_object(obj):
-    obj = ensure_unicode_dict(obj)
+    obj = ensure_unicode(obj)
     return base64.b64encode(cbor.dumps(obj))
 
 class MediachainWriter(object):
