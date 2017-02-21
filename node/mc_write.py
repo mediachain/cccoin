@@ -77,7 +77,7 @@ class MediachainWriter(object):
         :param refs: a string or list of strings to use as "WKI"s (external ids) for the statement. e.g. the cccoin post id
         :param deps: if the statement depends on other data objects, `deps` should contain their hashes
         :param tags: string or list of strings to use as keywords for queries
-        :return: tornado Future, will resolve to list of string statement IDs on success.
+        :return: tornado Future, will resolve to a string statement ID on success.
         :raise: HTTPError if request fails
         """
 
