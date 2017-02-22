@@ -4,3 +4,4 @@ tornado==4.3
 pycryptodome==3.4.3
 ethereum==1.0.8
 web3==3.5.2
+cbor==1.0.0
