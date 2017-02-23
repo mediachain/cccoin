@@ -21,14 +21,18 @@ contract CCCoinToken {
     uint public totalSupply;
     mapping(address => uint) balances;
     mapping (address => mapping (address => uint)) allowed;
-    event Transfer(address indexed from, address indexed to, uint value);
-    event Approval(address indexed owner, address indexed spender, uint value);
+    event TransferTokEvent(address indexed from_address, address indexed to_address, uint value, uint from_final_tok, uint to_final_tok);
+    event ApprovalEvent(address indexed owner, address indexed spender, uint value);
+
+    //**** Minting events:
+
+    event MintEvent(uint reward_tok, uint reward_lock, address recipient, uint block_num, uint rewards_freq, uint tot_tok, uint tot_lock, uint current_tok, uint current_lock, uint minted_tok, uint minted_lock);
     
     //**** LOCK fields and events:
         
     mapping (address => uint) balances_lock;    
     uint public totalSupplyLock;
-    event LockupTokEvent(address recipient, uint amount_tok, uint end_tok, uint end_lock);    
+    event LockupTokEvent(address recipient, uint amount_tok, uint final_tok, uint final_lock);    
     
     //**** Modifiers:
 
@@ -71,26 +75,23 @@ contract CCCoinToken {
 
     //**** Functions only minter can call:
     
-    /// Mint TOK:
-    function mintToken(address recipient, uint amount)
+    /// Mint new TOK or LOCK tokens, via mining rewards:
+    function mintTokens(uint reward_tok, uint reward_lock, address recipient, uint block_num, uint rewards_freq, uint tot_tok, uint tot_lock)
     external
     only_minter
     max_rate_not_reached(start_time)
     {
-        balances[recipient] = safeAdd(balances[recipient], amount);
-        totalSupply = safeAdd(totalSupply, amount);
+        balances[recipient] = safeAdd(balances[recipient], reward_tok);
+        totalSupply = safeAdd(totalSupply, reward_tok);
+        balances_lock[recipient] = safeAdd(balances_lock[recipient], reward_lock);
+        totalSupplyLock = safeAdd(totalSupply, reward_lock);
+	MintEvent(reward_tok, reward_lock, recipient, block_num, rewards_freq,
+		  tot_tok, tot_lock,
+		  balances[recipient], balances_lock[recipient]
+		  minted_tok[recipient], minted_lock[recipient]
+		 );
     }
-    
-    // Mint LOCK, e.g. for certain types of mining rewards:
-    function mintLockToken(address recipient, uint amount)
-    external
-    only_minter
-    max_rate_not_reached(start_time)
-    {
-        balances_lock[recipient] = safeAdd(balances_lock[recipient], amount);
-        totalSupplyLock = safeAdd(totalSupply, amount);
-    }
-    
+        
     // Cashout LOCK to TOK at current tok_per_lock exchange rate. Only minter can do this, to limit withdrawl rate:
     function mintLockCashout(address recipient, uint amount_lock)
     external
@@ -124,7 +125,7 @@ contract CCCoinToken {
     function transfer(address _to, uint _value) returns (bool success) {
 	balances[msg.sender] = safeSub(balances[msg.sender], _value);
 	balances[_to] = safeAdd(balances[_to], _value);
-	Transfer(msg.sender, _to, _value);
+	TransferTokEvent(msg.sender, _to, _value, balances[msg.sender], balances[_to]);
 	return true;
     }
 
@@ -134,7 +135,7 @@ contract CCCoinToken {
 	balances[_to] = safeAdd(balances[_to], _value);
 	balances[_from] = safeSub(balances[_from], _value);
 	allowed[_from][msg.sender] = safeSub(_allowance, _value);
-	Transfer(_from, _to, _value);
+	TransferTokEvent(_from, _to, _value, balances[_from], balances[_to]);
 	return true;
     }
 
@@ -144,7 +145,7 @@ contract CCCoinToken {
 
     function approve(address _spender, uint _value) returns (bool success) {
 	allowed[msg.sender][_spender] = _value;
-	Approval(msg.sender, _spender, _value);
+	ApprovalEvent(msg.sender, _spender, _value);
 	return true;
     }
 

@@ -16,6 +16,28 @@ else:
 
 MAIN_CONTRACT_FN = '../contracts/CCCoinToken.sol'
 
+## Rewards parameters:
+
+DEFAULT_REWARDS = {'REWARDS_CURATION':90.0,     ## Voting rewards
+                   'REWARDS_WITNESS':10.0,      ## Witness rewards
+                   'REWARDS_SPONSOR':10.0,      ## Web nodes that cover basic GAS / TOK for users on their node.
+                   'REWARDS_POSTER_MULT':1,     ## Reward / penalize the poster as if he were this many voters.
+                   'REWARDS_CUTOFF':0.95,       ## Percent of total owed rewards to send in each round. Avoids dust.
+                   'MIN_REWARD_LOCK':1,         ## Minimum number of LOCK that will be paid as rewards.
+                   'REWARDS_FREQUENCY':140,     ## 140 blocks = 7 hours
+                   'REWARDS_LOCK_INTEREST_RATE':1.0,   ## Annual interest rate paid to LOCK holders.
+                   'MAX_UNBLIND_DELAY':20,      ## Max number of blocks allowed between submitting a blind vote & unblinding.
+                   'MAX_GAS_DEFAULT':10000,     ## Default max gas fee per contract call.
+                   'MAX_GAS_REWARDS':10000,     ## Max gas for rewards function.
+                   'NEW_USER_LOCK_DONATION':1,  ## Free LOCK given to new users that signup through this node.
+                 }
+
+## Number of blocks to wait before advancing to each new state:
+
+DEFAULT_CONFIRM_STATES = {'PENDING':0,
+                          'BLOCKCHAIN_CONFIRMED':15,
+                          }
+
 ######## Print Settings:
 
 ss = {x:y for x,y in dict(locals()).iteritems() if not x.startswith('__')}
@@ -45,6 +67,8 @@ from os import urandom
 
 from collections import Counter
 
+from math import log
+from sys import maxint
 
 ######## Setup Environment:
 
@@ -86,6 +110,7 @@ def get_deployed_address():
         return d
 
 
+    
 class ContractWrapper:
     
     def __init__(self,
@@ -94,30 +119,36 @@ class ContractWrapper:
                  events_callback = False,
                  rpc_host = DEFAULT_RPC_HOST,
                  rpc_port = DEFAULT_RPC_PORT,
-                 confirm_states = {'PENDING':0,
-                                   'BLOCKCHAIN_CONFIRMED':15,
-                                   'STALE':100,
-                                   },
+                 override_confirm_states = {},
                  final_confirm_state = 'BLOCKCHAIN_CONFIRMED',
                  contract_address = False,
+                 start_at_current_block = False,
                  ):
         """
         Simple contract wrapper, assists with deploying contract, sending transactions, and tracking event logs.
         
         Args:
-          - `events_callback` will be called upon each state transition, according to `confirm_states`, 
-             until `final_confirm_state`.
-          - `contract_address` contract address, from previous `deploy()` call.
+        - the_code - solidity code for contract that should be deployed, prior to any operations.
+        - the_address - address of already-deployed main contract.
+        - `events_callback` will be called upon each state transition, according to `confirm_states`, 
+          until `final_confirm_state`.
+        - `contract_address` contract address, from previous `deploy()` call.
         """
 
+        self.start_at_current_block = start_at_current_block
+        
         self.the_code = the_code
         self.contract_address = the_address
 
         assert self.the_code or self.contract_address
         
         self.loop_block_num = -1
+
+        cs = DEFAULT_CONFIRM_STATES.copy()
+        cs.update(override_confirm_states)
         
-        self.confirm_states = confirm_states
+        self.confirm_states = cs
+        
         self.events_callback = events_callback
 
         from ethjsonrpc.utils import hex_to_dec, clean_hex, validate_block
@@ -162,6 +193,11 @@ class ContractWrapper:
         """
         https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_newfilter
         """
+
+        if self.start_at_current_block:
+            start_block = self.c.eth_blockNumber()
+        else:
+            start_block = 0
         
         self.latest_block_num = self.c.eth_blockNumber()
 
@@ -177,7 +213,7 @@ class ContractWrapper:
             
             got_block = 0
             
-            params = {'fromBlock': '0x01',#ethereum.utils.int_to_hex(from_block),
+            params = {'fromBlock': ethereum.utils.int_to_hex(start_block),#ethereum.utils.int_to_hex(from_block),#'0x01'
                       'toBlock': ethereum.utils.int_to_hex(to_block),
                       'address': self.contract_address,
                       }
@@ -395,10 +431,12 @@ for which in ['BLOCKCHAIN_CONFIRMED',
               'BLOCKCHAIN_PENDING',
               'DIRECT',
               ]:
-    all_dbs[which] = {'votes':manager.dict(), ## {(pub_key, item_id):direction},
-                      'flags':manager.dict(), ## {(pub_key, item_id):direction},
-                      'posts':manager.dict(), ## {post_id:post}
+    all_dbs[which] = {'votes':manager.dict(),  ## {(pub_key, item_id):direction},
+                      'flags':manager.dict(),  ## {(pub_key, item_id):direction},
+                      'posts':manager.dict(),  ## {post_id:post}
                       'scores':manager.dict(), ## {item_id:score}
+                      'tok':manager.dict(),    ## {pub_key:amount_tok}
+                      'lock':manager.dict(),   ## {pub_key:amount_lock}
                       }
 
 ############### CCCoin Core API:
@@ -438,7 +476,163 @@ def create_long_id(sender, data):
     xx = 'i' + xx
     return xx
     
+def test_rewards(via_cli = False):
+    """
+    Variety of tests for the rewards function.
+    """
+    
+    code = \
+    """
+    pragma solidity ^0.4.6;
+
+    contract CCCoinToken {
+        event TheLog(bytes);
+        function addLog(bytes val) payable { 
+            TheLog(val);
+        }
+    }
+    """
+
+    ## Deploy again and ignore any existing state:
+    
+    cca = CCCoinAPI(the_code = code,
+                    start_at_current_block = True,
+                    override_rewards = {'REWARDS_FREQUENCY':1, ## Compute after every block.
+                                        'REWARDS_CURATION':1.0,##
+                                        'REWARDS_WITNESS':1.0, ##
+                                        'REWARDS_SPONSOR':1.0, ##
+                                        'MAX_UNBLIND_DELAY':0, ## Wait zero extra blocks for unblindings.
+                                        },
+                    override_confirm_states = {'BLOCKCHAIN_CONFIRMED':0}, ## Confirm instantly
+                    genesis_users = ['u1','u2','u3'], ## Give these users free genesis LOCK, to bootstrap rewards.
+                    )
+    
+    cca.test_feed_round([{'user_id':'u3','action':'post','use_id':'p1','image_title':'a'},
+                         {'user_id':'u3','action':'post','use_id':'p2','image_title':'b'},
+                         {'user_id':'u1','action':'vote','item_id':'p1','direction':1},
+                         ])
+
+    cca.test_feed_round([{'user_id':'u2','action':'vote','item_id':'p2','direction':1},
+                         ])
+    
+    ## u1 should have a vote reward, u3 should have a post reward:
+
+
+class TemporalTable:
+    """
+    Temporal in-memory database. Update and lookup historical values of a key.
+    
+    TODO - replace this with SQL temporal queries, for speed?
+    """
+    
+    def __init__(self,):
+        self.hh = {}             ## {key:{block_num:value}}
+        self.current_latest = {} ## {key:block_num}
+        self.all_block_nums = set()
+        self.largest_pruned = -maxint
         
+    def store(self, key, value, start_block, as_set_op = False):
+        """ """
+        if key not in self.hh:
+            self.hh[key] = {}
+            
+        if as_set_op:
+            if start_block not in self.hh[key]:
+                self.hh[key][start_block] = set()
+            self.hh[key][start_block].add(value) ## Must have already setup in previous call.
+        else:
+            self.hh[key][start_block] = value
+            
+        self.current_latest[key] = max(start_block, self.current_latest.get(key, -maxint))
+
+        self.all_block_nums.add(start_block)
+        
+    def remove(self, key, value, start_block, as_set_op = False):
+        if as_set_op:
+            self.hh[key][start_block].discard(value) ## Must have already setup in previous call.
+        else:
+            del self.hh[key][start_block]
+    
+    def lookup(self, key, start_block = -maxint, end_block = 'latest', default = KeyError):
+        """ Return only latest, between start_block and end_block. """
+
+        if (start_block > -maxint) and (start_block <= self.largest_pruned):
+            assert False, ('PREVIOUSLY_PRUNED_REQUESTED_BLOCK', start_block, self.largest_pruned)
+        
+        if (key not in self.hh) or (not self.hh[key]):
+            if default is KeyError:
+                raise KeyError
+            return default
+
+        ## Latest:
+        
+        if end_block == 'latest':
+            end_block = self.current_latest[key]
+        
+        ## Exactly end_block:
+
+        if start_block == end_block:
+            if end_block in self.hh[key]:
+                return self.hh[key][end_block]
+        
+        ## Closest <= block_num:
+        
+        for xx in sorted(self.hh.get(key,{}).keys(), reverse = True):
+            if xx > end_block:
+                continue
+            if xx < start_block:
+                continue
+            return self.hh[key][xx]
+        else:
+            if default is KeyError:
+                raise KeyError
+            return default
+
+    def iterate_block_items(self, start_block = -maxint, end_block = 'latest'):
+        """ Iterate latest version of all known keys, between start_block and end_block. """
+        
+        for kk in self.current_latest:
+            try:
+                rr = self.lookup(kk, start_block, end_block)
+            except:
+                ## not yet present in db
+                continue
+            yield (kk, rr)
+    
+    def prune_historical(self, end_block):
+        """ Prune ONLY OUTDATED records prior to and including `end_block`, e.g. to clear outdated historical state. """
+        for key in self.hh.keys():
+            for bn in sorted(self.hh.get(key,{}).keys()):
+                if bn > end_block:
+                    break
+                del self.hh[key][bn]
+        self.largest_pruned = max(end_block, self.largest_pruned)
+        
+    def wipe_newer(self, start_block):
+        """ Wipe blocks newer than and and including `start_block` e.g. for blockchain reorganization. """
+        for key in self.hh.keys():
+            for bn in sorted(self.hh.get(key,{}).keys(), reverse = True):
+                if bn < start_block:
+                    break
+                del self.hh[key][bn]
+
+            
+def test_temporal_dict():
+    xx = TemporalTable()
+    xx.store('a', 'b', start_block = 1)
+    assert xx.lookup('a') == 'b'
+    xx.store('a', 'c', start_block = 3)
+    assert xx.lookup('a') == 'c'
+    xx.store('a', 'd', start_block = 2)
+    assert xx.lookup('a') == 'c'
+    assert xx.lookup('a', end_block = 2) == 'd'
+    xx.store('e','h',1)
+    xx.store('e','f',2)
+    xx.store('e','g',3)
+    assert tuple(xx.iterate_block_items()) == (('a', 'c'), ('e', 'g'))
+    assert tuple(xx.iterate_block_items(end_block = 1)) == (('a', 'b'), ('e', 'h'))
+
+    
 class CCCoinAPI:
     def _validate_api_call(self):
         pass
@@ -449,47 +643,57 @@ class CCCoinAPI:
                  the_code = False,
                  the_address = False,
                  fake_id_testing_mode = False,
+                 start_at_current_block = False,
+                 override_rewards = {},
+                 override_confirm_states = {},
+                 genesis_users = [],
                  ):
+        """
+        Note: Either `the_code` or `the_address` should be supplied to the contract.
+
+        Args:
+        - the_code: solidity code for contract that should be deployed, prior to any operations.
+        - the_address: address of already-deployed main contract.
+        - fake_id_testing_mode: Convenience for testing, uses `use_id` values as the IDs.
+        - start_at_current_block: Only compute state from actions >= current block_num. Useful for testing.
+        - mode: Mode with which run this node:
+          + web: web node that computes the state of the system and serves it to web browsers.
+          + rewards: rewards node that mints new ERC20 tokens based on the rewards system.
+        - override_rewards: dict of rewards settings that override defaults.
+        - genesis_users: Give these users free genesis LOCK, to bootstrap rewards.
+        """
         
         assert mode in ['web', 'rewards', 'audit']
+        
+        rw = DEFAULT_REWARDS.copy()
+        rw.update(override_rewards)
+
+        unk = set(rw).difference(DEFAULT_REWARDS)
+        assert not unk, ('UNKNOWN SETTINGS:', unk)
+        
+        self.rw = rw
         
         self.mode = mode
 
         self.fake_id_testing_mode = fake_id_testing_mode
         
         self.offline_testing_mode = offline_testing_mode
+
+        self.genesis_users = genesis_users
         
-        if the_code:
-            self.cw = ContractWrapper(the_code,
-                                      the_address,
+        if the_code or the_address:
+            self.cw = ContractWrapper(the_code = the_code,
+                                      the_address = the_address,
                                       events_callback = self.process_event, #self.rewards_and_auditing_callback)
-                                      )
-
-        ## TOK rewards settings:
-        
-        self.REWARDS_CURATION = 90.0    ## Voting rewards
-        self.REWARDS_POSTING = 10.0     ## Posting rewards
-        self.REWARDS_WITNESS = 10.0     ## Witness rewards
-        self.REWARDS_SPONSOR = 10.0     ## Web nodes that cover basic GAS / TOK for users on their node.
-        
-        self.REWARDS_FREQUENCY = 140    ## 140 blocks = 7 hours
-        
-        self.MAX_UNBLIND_DELAY = 20     ## Maximum number of blocks allowed between submitting a blind vote and unblinding.
-        
-        self.MAX_GAS_DEFAULT = 10000    ## Default max gas fee per contract call.
-        self.MAX_GAS_REWARDS = 10000    ## Max gas for rewards function.
-        
-        self.NEW_USER_LOCK_DONATION = 1 ## Free LOCK given to new users that signup through this node.
-
-        self.LOCK_INTEREST_RATE = 1.0    ## Annual inteest rate paid to LOCK holders
-        
+                                      start_at_current_block = start_at_current_block,
+                                      override_confirm_states = override_confirm_states,
+                                      )        
         ##
-        
         self.all_users = {}
         
         ###
         
-        self.latest_block_num = -1
+        self.latest_rewarded_block_number = -1
         
         self.posts_by_post_id = {}        ## {post_id:post}
         self.post_ids_by_block_num = {}   ## {block_num:[post_id,...]}
@@ -513,11 +717,36 @@ class CCCoinAPI:
 
         self.prev_block_number = -1
 
+        
         #### TESTING VARS FOR test_feed_round():
         
         self.map_fake_to_real_user_ids = {}
         self.map_real_to_fake_user_ids = {}
 
+        self.latest_block_number = -1
+
+        
+        #### STATE SNAPSHOTS FOR OLD BLOCKS:
+
+        ## Combine these all together in order of blocks to get full state snapshot:
+        
+        ## {block_num: {blind_hash:(voter_id, item_id)}}
+        
+        self.confirmed_unblinded_votes = TemporalTable()   ##
+        self.confirmed_unblinded_flags = TemporalTable()   ##
+        self.confirmed_min_lock_per_user = TemporalTable() ##
+        self.confirmed_lock_per_item = TemporalTable()     ##
+        self.confirmed_posts = TemporalTable()             ##
+
+        self.confirmed_post_voters = {}
+        
+        for direction in [0, -1, 1, 2, -2]:
+            self.confirmed_post_voters[direction] = TemporalTable()       ##
+
+        self.confirmed_owed_rewards_lock = TemporalTable() ## {user_id:amount_lock}
+        self.confirmed_paid_rewards_lock = TemporalTable() ## {user_id:amount_lock}
+
+        
     
     def test_feed_round(self, actions):
         """
@@ -567,9 +796,7 @@ class CCCoinAPI:
             else:
                 assert False, action
         
-        self.cw.loop_once()
-        self.cw.loop_once()
-        
+        self.cw.loop_once()        
 
 
     def cache_unblind(self, creator_pub, payload_decoded, received_via):
@@ -582,6 +809,56 @@ class CCCoinAPI:
         3) Old from Blockchain that were previously seen via Web API.
         """
     
+
+    def process_lockup(self,
+                       block_num,
+                       recipient,
+                       amount_tok,
+                       final_tok,
+                       final_lock,
+                       ):
+        """
+        event LockupTokEvent(address recipient, uint amount_tok, uint final_tok, uint final_lock);
+        """
+
+        ## Update minimal LOCK at each block:
+        
+        self.confirmed_min_lock_per_user.store(recipient,
+                                               min(final_lock, self.confirmed_min_lock_per_user.lookup(recipient,
+                                                                                                       end_block = block_num,
+                                                                                                       default = maxint,
+                                                                                                       )),
+                                               block_num,
+                                               )
+    
+    def process_mint(self,
+                     msg_block_num,
+                     reward_tok,
+                     reward_lock,
+                     recipient,
+                     block_num,
+                     rewards_freq,
+                     tot_tok,
+                     tot_lock,
+                     current_tok,
+                     current_lock,
+                     minted_tok,
+                     minted_lock,
+                     ):
+        """
+        Received minting event.
+
+        event MintEvent(uint reward_tok, uint reward_lock, address recipient, uint block_num, uint rewards_freq, uint tot_tok, uint tot_lock, uint current_tok, uint current_lock, uint minted_tok, uint minted_lock);
+        """
+        self.confirmed_paid_rewards_lock.store(user_id,
+                                               max(minted_lock, self.confirmed_paid_rewards_lock.lookup(user_id,
+                                                                                                        end_block = doing_block_num,
+                                                                                                        default = 0,
+                                                                                                        )),
+                                               block_num,
+                                               )
+
+        
     def process_event(self,
                       msg,
                       received_via,
@@ -632,7 +909,7 @@ class CCCoinAPI:
         }
         
         """
-
+        
         if received_via == 'DIRECT':
 
             payload_decoded = loads_compact(msg['payload'])
@@ -732,10 +1009,6 @@ class CCCoinAPI:
                         self.blind_lookup[msg['blockNumber']] = set()
                     
                     self.blind_lookup[msg['blockNumber']].add(payload_decoded['blind_hash'])
-
-                
-                    
-
                     
                     
             print ('PAYLOAD_INNER:', payload_inner)
@@ -761,52 +1034,101 @@ class CCCoinAPI:
                     
                     item_ids.append(post_id)
                     
-                    if post_id not in self.posts_by_post_id:                    
+                    post['post_id'] = post_id
+                    post['status'] = {'confirmed':False,
+                                      'created_time':int(time()),
+                                      'created_block_num':False, ## Filled in when confirmed via blockchain
+                                      #'score':1,
+                                      #'score_weighted':1,
+                                      'creator_address':creator_address,
+                                      }
 
-                        post['post_id'] = post_id
-                        post['status'] = {'confirmed':False,
-                                          'created_time':int(time()),
-                                          'created_block_num':False, ## Filled in when confirmed via blockchain
-                                          #'score':1,
-                                          #'score_weighted':1,
-                                          'creator_addr':creator_address,
-                                          }
-                        
-                        self.posts_by_post_id[post_id] = post
-                        
-                        if received_via == 'BLOCKCHAIN_CONFIRMED':
-                            
-                            if msg['blockNumber'] not in self.post_ids_by_block_num:
-                                self.post_ids_by_block_num[msg['blockNumber']] = []
-                            self.post_ids_by_block_num[msg['blockNumber']].append(post['post_id'])
+                    self.posts_by_post_id[post_id] = post                        
 
-                            ## TODO - best way to delete posts?:
-                            
-                            if post.get('deleted') and (post_id in self.posts_by_post_id):
-                                self.posts_by_post_id[post_id]['status']['deleted'] = True
-            
+                    if received_via == 'BLOCKCHAIN_CONFIRMED':
+                        
+                        post['status']['confirmed'] = True
+                        post['status']['created_block_num'] = msg['blockNumber']
+                        
+                        self.confirmed_posts.store(post['post_id'],
+                                                   post,
+                                                   msg['blockNumber'],
+                                                   )
+                        
             elif payload_decoded['item_type'] == 'votes':
                 
                 for vote in payload_inner['votes']:
-
+                    
                     #print ('!!!INCREMENT', vote['item_id'], the_db['scores'].get(vote['item_id']))
+                    
+                    ## Record {(voter, item_id) -> direction} present lookup:
                     
                     the_db['scores'][vote['item_id']] = the_db['scores'].get(vote['item_id'], 0) + vote['direction'] ## TODO - Not thread safe.
                     
+                    ## Record {item_id -> voters} historic lookup:
+
+                    print ('MSG', received_via, msg)
+                    
+                    if received_via == 'BLOCKCHAIN_CONFIRMED':
+
+                        old_voters = self.confirmed_post_voters[vote['direction']].lookup(vote['item_id'],
+                                                                                          start_block = msg['blockNumber'],
+                                                                                          end_block = msg['blockNumber'],
+                                                                                          default = set(),
+                                                                                          )
+
+                        if vote['direction'] in [1, -1, 2]:
+                            self.confirmed_post_voters[vote['direction']].store(vote['item_id'],
+                                                                                creator_pub,
+                                                                                start_block = msg['blockNumber'],
+                                                                                as_set_op = True,
+                                                                                )
+                        elif vote['direction'] in [0, -2]:                        
+                            self.confirmed_post_voters[vote['direction']].remove(vote['item_id'],
+                                                                                 creator_pub,
+                                                                                 start_block = msg['blockNumber'],
+                                                                                 as_set_op = True,
+                                                                                 )
+
+                    ## Record {(voter, item_id) -> direction} historic lookups:
+                    
                     if vote['direction'] in [1, -1]:
                         the_db['votes'][(creator_pub, vote['item_id'])] = vote['direction']
-                    
+
+                        if received_via == 'BLOCKCHAIN_CONFIRMED':
+                            self.confirmed_unblinded_votes.store((creator_pub, vote['item_id']),
+                                                                 vote['direction'],
+                                                                 msg['blockNumber'],
+                                                                 )
+                        
                     elif vote['direction'] == 0:
                         try: del the_db['votes'][(creator_pub, vote['item_id'])]
                         except: pass
-                        
+
+                        if received_via == 'BLOCKCHAIN_CONFIRMED':
+                            self.confirmed_unblinded_votes.store((creator_pub, vote['item_id']),
+                                                                 vote['direction'],
+                                                                 msg['blockNumber'],
+                                                                 )
+
                     elif vote['direction'] == 2:
                         the_db['flags'][(creator_pub, vote['item_id'])] = vote['direction']
-                        
+                                                
+                        if received_via == 'BLOCKCHAIN_CONFIRMED':
+                            self.confirmed_unblinded_flags.store((creator_pub, vote['item_id']),
+                                                                 vote['direction'],
+                                                                 msg['blockNumber'],
+                                                                 )                        
                     elif vote['direction'] == -2:
                         try: del the_db['flags'][(creator_pub, vote['item_id'])]
                         except: pass
-                    
+                        
+                        if received_via == 'BLOCKCHAIN_CONFIRMED':
+                            self.confirmed_unblinded_flags.store((creator_pub, vote['item_id']),
+                                                                 vote['direction'],
+                                                                 msg['blockNumber'],
+                                                                 )
+                        
                     else:
                         assert False, repr(vote['direction'])
                         
@@ -821,98 +1143,236 @@ class CCCoinAPI:
         
         elif payload_decoded['command'] == 'account_settings':
             pass
-        
 
-        ## Block rewards, for sufficiently old actions:
         
-        if (received_via == 'BLOCKCHAIN_CONFIRMED') and False: ## Received via blockchain.
-            if (msg['blockNumber'] > self.prev_block_number) and (msg['blockNumber'] % 700 == 699):
-                pass
-
-            ### START REWARDS
+        ## Compute block rewards, for sufficiently old actions:
+        
+        if (received_via == 'BLOCKCHAIN_CONFIRMED'):
+            
+            ### START REWARDS:
+            
+            #print 'RECEIVED_BLOCK', received_via
+            #raw_input()
+            
             block_number = ethereum.utils.parse_int_or_hex(msg['blockNumber'])
             
             ## REWARDS:
+                        
+            doing_block_num = block_number - (self.rw['MAX_UNBLIND_DELAY'] + 1)
             
-            if (msg['blockNumber'] > self.latest_block_number):
+            assert doing_block_num <= block_number,('TOO SOON, fix MAX_UNBLIND_DELAY', doing_block_num, block_number)
+            
+            if (msg['blockNumber'] > self.latest_block_number) and (doing_block_num > 0):
                 
-                ## GOT NEW BLOCK:
-
+                #### GOT NEW BLOCK:
+                
                 self.latest_block_number = max(block_number, self.latest_block_number)
                 
                 ## Mint TOK rewards for the old block, upon each block update:
+
+                if False:
+                    print 'ROUND:'
+                    print 'block_number:',block_number
+                    print 'doing_block_num:',doing_block_num
+                    print "the_db['votes']", the_db['votes']
+                    print "the_db['posts']", the_db['posts']
+                    print "the_db['scores']", the_db['scores']
+                    print 'self.blind_lookup', self.blind_lookup
+                    raw_input()
+
+                """
+                1) divide total lock among all previous voters + posters.
+                2) some votes have less lock if voter voted multiple times this round.
+                """
                 
-                doing_block_id = block_number - (self.MAX_UNBLIND_DELAY + 1)
+                ## Divide up each voter's lock power, between all votes he made this round:
                 
-                total_lock_this_round = self.total_lock_at_block.get(doing_block_id, 0.0)
+                voter_lock_cache = {} ## {voter_id:voter_lock}
+                voter_counts = {}     ## {voter_id:set(item_id,...)}
+                total_lock = 0
+                item_ids = set()
                 
-                for sig, (voter_id, item_id, voter_lock) in self.unblinded_votes_at_block.get(doing_block_id, {}).iteritems():
+                for (voter_id, item_id), direction in self.confirmed_unblinded_votes.iterate_block_items(start_block = doing_block_num,
+                                                                                                         end_block = doing_block_num,
+                                                                                                         ):
+                    if voter_id not in voter_counts:
+                        voter_lock = self.confirmed_min_lock_per_user.lookup(voter_id,
+                                                                             end_block = doing_block_num - 1, ## Minus 1 for safety.
+                                                                             default = (voter_id in self.genesis_users and 1.0 or 0.0),
+                                                                             )
+                        voter_lock_cache[voter_id] = voter_lock
+                        total_lock += voter_lock
+                    
+                    if voter_id not in voter_counts:
+                        voter_counts[voter_id] = set()
+                    voter_counts[voter_id].add(item_id)
+                    
+                    item_ids.add(item_id)
 
-                    item_poster_id = self.poster_ids[item_id]
-                    
-                    if item_id not in self.new_voters_for_item:
-                        self.new_voters_for_item[item_id] = set()
-                    self.new_voters_for_item[item_id].add(voter_id)
-                    
-                    reward_per_voter = self.REWARDS_CURATION * (voter_lock / total_lock_this_item) * (total_lock_this_item / total_lock_this_round) / len(self.old_voters_for_item[item_id])
-                    
-                    reward_poster = self.REWARDS_POSTING * (total_lock_this_item / total_lock_this_round)
-                    
-                    for old_voter_id in self.old_voters_for_item[item_id]:
-
-                        ## Curator rewards:
-                        self.new_rewards[old_voter_id] = self.new_rewards.get(old_voter_id, 0.0) + reward_per_voter
-
-                        ## Sponsor rewards for curation:
-                        if old_voter_id in self.sponsors:
-                            self.new_rewards[self.sponsors[old_voter_id]] = self.new_rewards.get(self.sponsors[old_voter_id], 0.0) +  (self.REWARDS_SPONSOR / self.REWARDS_CURATION)
-                        
-                    self.new_rewards[item_poster_id] = self.new_rewards.get(item_poster_id, 0.0) + reward_poster
+                total_lock_per_item = Counter()
+                lock_per_user = {}
                 
-                ## Occasionally distribute rewards:
-
-                if (block_number % self.REWARDS_FREQUENCY) == 0:
-
-                    assert confirm_level == 'CONFIRMED', confirm_level
+                for (voter_id, item_id), direction in self.confirmed_unblinded_votes.iterate_block_items(start_block = doing_block_num,
+                                                                                                         end_block = doing_block_num,
+                                                                                                         ):
+                    ## Spread among all posts he voted on:
+                    voter_lock = voter_lock_cache[voter_id] / float(len(voter_counts[voter_id]))
+                    lock_per_user[voter_id] = voter_lock
+                    total_lock_per_item[item_id] += voter_lock
                     
-                    if self.mode == 'audit':
+                
+                ## Get list of all old voters, for each post:
 
-                        ## TODO - Wait a little longer, then check that previous batch paid out correctly.
-                        
+                old_voters = {}
+                
+                for item_id in item_ids:
+                    old_voters[item_id] = []
+                    
+                    try:
+                        old_voters[item_id] = self.confirmed_post_voters[1].lookup(item_id,
+                                                                                   start_block = doing_block_num - 1,
+                                                                                   end_block = doing_block_num - 1,
+                                                                                   )                
+                    except KeyError:
                         pass
                     
-                    elif self.mode == 'rewards':
+                    ## Treat poster as just another voter:
+                    
+                    post = self.confirmed_posts.lookup(item_id, end_block = doing_block_num)
+                    item_poster_id = post['status']['creator_address']
+                    old_voters[item_id].append(item_poster_id)
+                
+                #### Compute curation rewards:
+                
+                all_lock = float(sum(total_lock_per_item.values()))
+
+                if all_lock:
+
+                    #### Have some rewards to record:
+
+                    new_rewards_curator = Counter()
+                    new_rewards_sponsor = Counter()
+
+                    for item_id, x_old_voters in old_voters.iteritems():
+
+                        if all_lock and len(old_voters[item_id]):
+                            xrw = (total_lock_per_item[item_id] / all_lock) / len(old_voters[item_id])
+                        else:
+                            xrw = 0
+
+                        new_rewards_curator[voter_id] += xrw
+
+                        ## Sponsor rewards for curation:
+
+                        post = self.confirmed_posts.lookup(item_id, end_block = doing_block_num)
+                        if 'sponsor' in post:
+                            new_rewards_curator[post['sponsor']] += xrw
+
+
+                    ## Re-weight rewards to proper totals:
+
+                    aa = float(sum(new_rewards_curator.values()))
+                    if aa:
+                        conv = self.rw['REWARDS_CURATION'] / aa
+                        new_rewards_curator = [(x,(y * conv)) for x,y in new_rewards_curator.iteritems()]
+                    else:
+                        new_rewards_curator = []
+
+                    bb = float(sum(new_rewards_sponsor.values()))
+                    if bb:
+                        conv = self.rw['REWARDS_SPONSOR'] / bb
+                        new_rewards_sponsor = [(x,(y * conv)) for x,y in new_rewards_sponsor.iteritems()]
+                    else:
+                        new_rewards_sponsor = []
+
+                    ## Mark as earned:
+
+                    for user_id, reward in (new_rewards_curator + new_rewards_sponsor):
+
+                        self.confirmed_earned_rewards_lock.store(user_id,
+                                                                 reward + self.confirmed_earned_rewards_lock.lookup(user_id,
+                                                                                                                    end_block = doing_block_num,
+                                                                                                                    default = 0,
+                                                                                                                    ),
+                                                                 doing_block_num,
+                                                                 )
+
+                """
+                - Schedule payouts to begin every 300 blocks.
+                - When rewards time arrives:
+                  + take snapshot of earned rewards. total_earned@-10 - total_confirmed@-20
+                  + submit rewards_lock to blockchain
+                - Wait 10 blocks.
+                - If rewards_lock is successful, pay out.
+                """
+                
+                assert received_via == 'BLOCKCHAIN_CONFIRMED', confirm_level
+                
+                ## Occasionally distribute rewards:
+                
+                if (self.mode == 'rewards') and (block_number % self.rw['REWARDS_FREQUENCY']) == (self.rw['REWARDS_FREQUENCY'] - 1):
+                    
+                    ## Compute net owed:
+                    
+                    old_rewards_block_num = doing_block_num - (self.rw['REWARDS_FREQUENCY'] * 2)
+                    
+                    net_earned = 0.0
+                    
+                    for user_id, earned_lock in self.confirmed_earned_rewards_lock.iterate_block_items(start_block = old_rewards_block_num,
+                                                                                                       end_block = old_rewards_block_num,
+                                                                                                       ):
                         
-                        rr = dumps_compact({'t':'mint', 'rewards':self.new_rewards})
+                        paid_lock = self.confirmed_paid_rewards_lock.lookup(user_id,
+                                                                            end_block = old_rewards_block_num,
+                                                                            default = 0.0,
+                                                                            )
+                        
+                        net_earned += float(max(0.0, earned_lock - paid_lock))
+                    
+                    ## Distribute rewards:
+                    
+                    rrr = []
+                    tot_lock_paying_now = 0.0
+                    for reward, user_id in sorted(new_rewards_curator + new_rewards_sponsor, reverse = True):
+                        
+                        if tot_lock_paying_now / net_earned >= self.rw['REWARDS_CUTOFF']:
+                            break
+                        
+                        if reward < self.rw['MIN_REWARD_LOCK']:
+                            break
+                            
+                        tot_lock_paying_now += reward
 
-                        tx = self.cw.send_transaction('addLog(bytes)',
-                                                      [rr],
-                                                      gas_limit = self.MAX_GAS_DEFAULT,
+                        rrr.append([reward, user_id])
+                        
+                    for reward_tok, user_id in rrr:
+                        
+                        reward_tok = 0.9 * reward_lock
+                        tot_tok_paying_now = 0.9 * tot_lock_paying_now
+                        
+                        tx = self.cw.send_transaction('mintTokens(address, uint, uint, uint, uint, uint, uint)',
+                                                      [reward_tok,
+                                                       reward_lock,
+                                                       user_id,
+                                                       tot_tok_paying_now,
+                                                       tot_lock_paying_now,
+                                                       block_number,
+                                                       self.rw['REWARDS_FREQUENCY'],
+                                                       ],
+                                                      gas_limit = self.rw['MAX_GAS_REWARDS'],
                                                       )
-
-                        xx = self.new_rewards.items()
-
-                        tx = self.cw.send_transaction('mintTok(bytes)',
-                                                      [[x for x,y in xx],
-                                                       [y for x,y in xx],
-                                                      ],
-                                                      gas_limit = self.MAX_GAS_REWARDS,
-                                                      )
-                        self.new_rewards.clear()
-                
+                    
+                    
                 ## Cleanup:
-                
-                if doing_block_id in self.unblinded_votes_at_block:
-                    del self.unblinded_votes_at_block[doing_block_id]
 
-                for item_id,voters in self.new_voters_for_item.iteritems():
+                if False:
+                    self.confirmed_unblinded_votes.prune_historical(doing_block_num - 2)
+                    self.confirmed_unblinded_flags.prune_historical(doing_block_num - 2)
+                    self.confirmed_min_lock_per_user.prune_historical(doing_block_num - 2)
+                    self.confirmed_lock_per_item.prune_historical(doing_block_num - 2)
+                    self.confirmed_posts.prune_historical(doing_block_num - 2)
+                    self.confirmed_post_voters[1].prune_historical(doing_block_num - 2)
                     
-                    if item_id not in self.old_voters_for_item:
-                        self.old_voters_for_item[item_id] = set()
-                    
-                    self.old_voters_for_item[item_id].update(voters)
-                    
-                self.new_voters_for_item.clear()
 
             ### END REWARDS
             
@@ -935,7 +1395,7 @@ class CCCoinAPI:
         Returns current TOK/LOCK exchange rate, based on seconds since contract genesis and annual lock interest rate.
         """
         
-        rr = start_amount * ((1.0 + self.LOCK_INTEREST_RATE) ** ((current_tm - genesis_tm) / 31557600.0))
+        rr = start_amount * ((1.0 + self.rw['REWARDS_LOCK_INTEREST_RATE']) ** ((current_tm - genesis_tm) / 31557600.0))
         
         return rr
             
@@ -993,7 +1453,7 @@ class CCCoinAPI:
             tx = self.cw.send_transaction('addLog(bytes)',
                                           [dd],
                                           #send_from = user_id,
-                                          gas_limit = self.MAX_GAS_DEFAULT,
+                                          gas_limit = self.rw['MAX_GAS_DEFAULT'],
                                           callback = False,
                                           )
         
@@ -1053,7 +1513,7 @@ class CCCoinAPI:
             tx = self.cw.send_transaction('addLog(bytes)',
                                           [rr],
                                           #send_from = user_id,
-                                          gas_limit = self.MAX_GAS_DEFAULT,
+                                          gas_limit = self.rw['MAX_GAS_DEFAULT'],
                                           )
             #tracking_id = tx
             
@@ -1070,7 +1530,7 @@ class CCCoinAPI:
     def lockup_tok(self):
         tx = self.cw.send_transaction('lockupTok(bytes)',
                                       [rr],
-                                      gas_limit = self.MAX_GAS_DEFAULT,
+                                      gas_limit = self.rw['MAX_GAS_DEFAULT'],
                                       )
 
     def get_balances(self,
@@ -1078,7 +1538,7 @@ class CCCoinAPI:
                      ):
         xx = self.cw.read_transaction('balanceOf(address)',
                                       [rr],
-                                      gas_limit = self.MAX_GAS_DEFAULT,
+                                      gas_limit = self.rw['MAX_GAS_DEFAULT'],
                                       )
         rr = loads_compact(xx['data'])
         return rr
@@ -1086,7 +1546,7 @@ class CCCoinAPI:
     def withdraw_lock(self,):
         tx = self.cw.send_transaction('withdrawTok(bytes)',
                                       [rr],
-                                      gas_limit = self.MAX_GAS_DEFAULT,
+                                      gas_limit = self.rw['MAX_GAS_DEFAULT'],
                                       )
         
     def get_sorted_posts(self,
@@ -1117,7 +1577,7 @@ class CCCoinAPI:
         if filter_users:
             rr = []
             for xx in self.posts_by_post_id.itervalues():
-                if xx['status']['creator_addr'] in filter_users:
+                if xx['status']['creator_address'] in filter_users:
                     rr.append(xx)
                     
         elif filter_ids:
@@ -1179,10 +1639,7 @@ def trend_detection(input_gen,
     """
     Basic in-memory KL-divergence based trend detection, with some helpers.
     """
-    
-    from math import log
-    from sys import maxint
-    
+        
     tot_window_size = window_size + window_size * prev_window_multiple
     
     all_ids = set()
@@ -1377,37 +1834,9 @@ def client_create_blind(inner,
                  }
     
     return r_blind, r_unblind
-
-
-def test_rewards(via_cli = False):
-    """
-    Variety of tests for the rewards function.
-    """
     
-    code = \
-    """
-    pragma solidity ^0.4.6;
-
-    contract CCCoinToken {
-        event TheLog(bytes);
-        function addLog(bytes val) payable { 
-            TheLog(val);
-        }
-    }
-    """
-
-    cca = CCCoinAPI(the_code = code)#the_code = main_contract_code)
     
-    cca.test_feed_round([{'user_id':'u3','action':'post','use_id':'p1','image_title':'a'},
-                         {'user_id':'u3','action':'post','use_id':'p2','image_title':'b'},
-                         {'user_id':'u1','action':'vote','item_id':'p1','direction':1},
-                         ])
     
-    cca.test_feed_round([{'user_id':'u2','action':'vote','item_id':'p2','direction':1},
-                         ])
-
-    ## u1 should have a vote reward, u3 should have a post reward:
-
     
 
 

@@ -5,8 +5,8 @@
 ## Unique
 
 - **Pays you** for positive contributions.
-- **No downloads** runs instantly in web browser, no 40GB Parity or Mist download.
-- **Zero fees** for regular end users, not micro-tipping.
+- **No downloads** runs instantly in web browser.
+- **Zero fees** for regular users, not micro-tipping.
 - **ERC20 standard** token compatibility.
 
 ## Rewards
