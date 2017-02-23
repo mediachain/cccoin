@@ -167,6 +167,9 @@ class MediachainQueue:
             if not self.in_q.size():
                 break
             sleep(self.sleep_time)
+
+    def __enter__(self):
+        pass
     
     def __exit__(self):
         self.wait_for_completion()
@@ -185,8 +188,8 @@ def test_mc_threaded():
             mcq.put('test_namespace', {'hello': 'from_python_' + str(x)})
 
         print 'WAITING FOR EXIT..'
-    
-    print ('GOT', rr)
+
+    print ('DONE')
 
 
 if __name__ == '__main__':
