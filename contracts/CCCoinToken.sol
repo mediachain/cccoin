@@ -26,10 +26,23 @@ contract CCCoinToken {
 
     //**** Minting events:
 
-    event MintEvent(uint reward_tok, uint reward_lock, address recipient, uint block_num, uint rewards_freq, uint tot_tok, uint tot_lock, uint current_tok, uint current_lock, uint minted_tok, uint minted_lock);
+    event MintEvent(uint reward_tok,
+		    uint reward_lock,
+		    address recipient,
+		    //uint block_num,
+		    //uint rewards_freq,
+		    //uint tot_tok,
+		    //uint tot_lock,
+		    //uint current_tok,
+		    //uint current_lock,
+		    uint minted_tok,
+		    uint minted_lock
+		   );
     
     //**** LOCK fields and events:
-        
+
+    mapping (address => uint) total_minted_tok;
+    mapping (address => uint) total_minted_lock;
     mapping (address => uint) balances_lock;    
     uint public totalSupplyLock;
     event LockupTokEvent(address recipient, uint amount_tok, uint final_tok, uint final_lock);    
@@ -76,7 +89,7 @@ contract CCCoinToken {
     //**** Functions only minter can call:
     
     /// Mint new TOK or LOCK tokens, via mining rewards:
-    function mintTokens(uint reward_tok, uint reward_lock, address recipient, uint block_num, uint rewards_freq, uint tot_tok, uint tot_lock)
+    function mintTokens(uint reward_tok, uint reward_lock, address recipient) //uint block_num, uint rewards_freq, uint tot_tok, uint tot_lock
     external
     only_minter
     max_rate_not_reached(start_time)
@@ -85,10 +98,16 @@ contract CCCoinToken {
         totalSupply = safeAdd(totalSupply, reward_tok);
         balances_lock[recipient] = safeAdd(balances_lock[recipient], reward_lock);
         totalSupplyLock = safeAdd(totalSupply, reward_lock);
-	MintEvent(reward_tok, reward_lock, recipient, block_num, rewards_freq,
-		  tot_tok, tot_lock,
-		  balances[recipient], balances_lock[recipient]
-		  minted_tok[recipient], minted_lock[recipient]
+	MintEvent(reward_tok,
+		  reward_lock,
+		  recipient,
+		  //block_num,
+		  //rewards_freq,
+		  //tot_tok, tot_lock,
+		  //balances[recipient],
+		  //balances_lock[recipient]
+		  total_minted_tok[recipient],
+		  total_minted_lock[recipient]
 		 );
     }
         
