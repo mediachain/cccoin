@@ -27280,7 +27280,11 @@ module.exports = exports = {
       exports.delete_auth_cookie();
     }
 
+    if (!data.username && data.owner_addr) {
+      data.username = data.owner_addr.slice(0, 8);
+    }
     console.log('grab_keys: ', data);
+
     return data;
   },
 

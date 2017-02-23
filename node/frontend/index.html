@@ -648,14 +648,8 @@
                     <div class="col s12">
                         <!-- START LOGIN -->
                         <div class="row" style="margin-bottom:0;">
-                            <div class="row modal-form-row">
-                                <div class="input-field col s12">
-                                    <i class="material-icons prefix">account_circle</i>
-                                    <input id="login_username" type="text" class="xvalidate">
-                                    <label for="login_username">Username or WIF</label>
-                                </div>
-                            </div>
-                            <div class="row" style="margin-bottom:0;">
+							Enter your passphrase to log into your account.
+							<div class="row" style="margin-bottom:0;">
                                 <div class="input-field col s12">
                                     <i class="material-icons prefix">lock</i>
                                     <input id="login_password" type="password" class="xvalidate">
@@ -685,20 +679,35 @@
                                     <div class="input-field col s12">
                                         <i class="material-icons prefix">account_circle</i>
                                         <input id="signup_username" type="text" class="xvalidate">
-                                        <label for="signup_username">Username or WIF</label>
+                                        <label for="signup_username">Desired username</label>
                                     </div>
                                 </div>
-                                <div class="row" style="margin-bottom:0;">
+                                <div class="row modal-form-row" style="margin-bottom:0;">
                                     <div class="input-field col s12">
                                         <i class="material-icons prefix">lock</i>
                                         <input readonly id="signup_passphrase" type="text" class="xvalidate">
                                         <label class="active" for="signup_passphrase">Generated Passphrase</label>
                                     </div>
                                 </div>
-                                <div class="row" style="margin-bottom:0;">
-                                    This passphrase has been generated for you, and <em>must</em> be kept safe and secret!
-                                    It cannot be recovered if you lose it, and if someone else obtains it, they will have
-                                    control over your account.
+								<div class="col s11 offset-s1 card-panel red lighten-3" id="signup-explanation-text">
+									<div id="password-warning-text">
+										<p>
+											The generated passphrase above uniquely identifies and protects your account,
+											and is the only thing you need to enter when logging in.
+											<em>You must</em> write it down in a safe place, store it in an encrypted
+											file, or commit it to memory!
+										</p>
+										<p>
+											If you lose or forget your passphrase it cannot be recovered, and if
+											someone else obtains it they will have control over your account.
+										</p>
+									</div>
+
+									<p id="username-explanation-text">
+
+									</p>
+								</div>
+								<div class="row" style="margin-bottom:0;">
                                     <div class="input-field col s12">
                                         <input id="password_warning_accepted" type="checkbox" class="xvalidate">
                                         <label for="password_warning_accepted">I understand that this passphrase must be kept safe and secret, and that it cannot be recovered if forgotten or lost</label>
