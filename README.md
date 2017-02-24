@@ -13,7 +13,11 @@
 
 Any regular web browser can instantly and safely use CCCoin just by going to the URL of anyone running a `web node`. Or, follow the instructions below to run your own private `web node`.
 
-Setup a [Geth](https://ethereum.github.io/go-ethereum/downloads/), [Parity](https://ethcore.io/parity.html), or [Test-RPC](https://github.com/ethereumjs/testrpc) Ethereum node, and configure its settings in `truffle.js`. Then,
+Setup a [Geth](https://ethereum.github.io/go-ethereum/downloads/), [Parity](https://ethcore.io/parity.html), or [Test-RPC](https://github.com/ethereumjs/testrpc) Ethereum node, and configure its settings in `truffle.js`.
+
+Instructions for setting up a private testnet with geth (current for 1.5.2) can be found [here](https://gist.github.com/parkan/5b99978279b5c58ca0fdff0c18ed6d88).
+
+Then,
 
 1. Launch your Ethereum node. Refer to the setup instructions for your chosen variant:
    
@@ -83,5 +87,3 @@ CCCoin has all of the stadard properties you expect from a dApp,
 
 Future plans include evolving from a single rewards node operating at a time, which can be fired and replaced at any time via a hard fork performed by the users of the network if they collectively choose to do so, toward a softer hiring and firing mechanism which will instead allow users to continually vote to elect a consortium of operators for rewards nodes. Further streamlining third party funding of web nodes is also planned.
 
-## Setting up privatenet with geth
-See [gist](https://gist.github.com/parkan/5b99978279b5c58ca0fdff0c18ed6d88)
