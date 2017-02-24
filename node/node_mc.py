@@ -156,11 +156,13 @@ class MediachainQueue:
     
     def push(self, *args, **kw):
         self.in_q.put((args, kw))
-        
+
     def worker(self):
+        io_loop = IOLoop()
+        io_loop.start()
         while True:
             args, kw = self.in_q.get(block = True)
-            IOLoop.current().run_sync(lambda: self.mw.publish(*args, **kw))
+            io_loop.run_sync(lambda: self.mw.publish(*args, **kw))
     
     def wait_for_completion(self):
         while True:
