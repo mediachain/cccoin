@@ -143,6 +143,13 @@
 		#stats_panel.fixednav{position:fixed;right:0px;}
 
 		.modal-form-row {margin-bottom:0;}
+
+	.input:focus {
+		outline: none !important;
+		border:1px solid red;
+		box-shadow: 0 0 10px #719ECE;
+	}
+
 	</style>
 
 </head>
@@ -261,7 +268,7 @@
 								   style="bottom:auto;top:-40px;"><i class="material-icons grey-text text-lighten-2">thumb_down</i></a><!-- keyboard_arrow_down -->
 								<div class="row" style="margin:0;">
 									<div class="card-creator-text">
-										<a href="/?user={{ the_item['status']['creator_address'] }}" class="red-text text-accent-4">{{ the_item['status']['creator_address'][:6] }}</a>
+										<a href="/?user={{ the_item['status']['creator_address'][:6] }}" class="red-text text-accent-4">{{ the_item['status']['creator_addr'][:6] }}</a>
 										<span class="card-time-ago grey-text" data-time-created="{{ the_item['status']['created_time'] }}"></span>
 									</div>
 									<div>
@@ -637,9 +644,11 @@
 <div id="modal2" class="modal">
 		<div class="modal-content">
                 <div class="row">
-                    <ul class="tabs col s12" id=="login_form_tabs">
-                        <li class="tab col s6"><a href="#login">Login</a></li>
-                        <li class="tab col s6"><a href="#signup">Sign up</a></li>
+                    <ul class="tabs col s12" id="login_form_tabs">
+                      <li class="tab col s6"><a href="#login"
+						onclick="setTimeout(function(){$('#login_password').focus()}, 500);">Login</a></li>
+                      <li class="tab col s6"><a href="#signup"
+						onclick="setTimeout(function(){$('#signup_username').focus()}, 500);">Sign up</a></li>
                     </ul>
                 </div>
             <div id="login">
@@ -648,7 +657,7 @@
                     <div class="col s12">
                         <!-- START LOGIN -->
                         <div class="row" style="margin-bottom:0;">
-							Enter your passphrase to log into your account.
+							
 							<div class="row" style="margin-bottom:0;">
                                 <div class="input-field col s12">
                                     <i class="material-icons prefix">lock</i>
@@ -685,32 +694,36 @@
                                 <div class="row modal-form-row" style="margin-bottom:0;">
                                     <div class="input-field col s12">
                                         <i class="material-icons prefix">lock</i>
-                                        <input readonly id="signup_passphrase" type="text" class="xvalidate">
+                                        <textarea readonly
+						  id="signup_passphrase"
+						  rows="2"
+						  type="text"
+						  class="xvalidate materialize-textarea"
+						  style="padding-bottom:0;"
+						  onclick="$(this).select();"></textarea>
                                         <label class="active" for="signup_passphrase">Generated Passphrase</label>
                                     </div>
                                 </div>
-								<div class="col s11 offset-s1 card-panel red lighten-3" id="signup-explanation-text">
-									<div id="password-warning-text">
-										<p>
-											The generated passphrase above uniquely identifies and protects your account,
-											and is the only thing you need to enter when logging in.
-											<em>You must</em> write it down in a safe place, store it in an encrypted
-											file, or commit it to memory!
-										</p>
-										<p>
-											If you lose or forget your passphrase it cannot be recovered, and if
-											someone else obtains it they will have control over your account.
-										</p>
-									</div>
-
-									<p id="username-explanation-text">
-
-									</p>
-								</div>
-								<div class="row" style="margin-bottom:0;">
+				<div class="col s11 offset-s1 card-panel red lighten-3" id="signup-explanation-text"
+				     style="margin-bottom:0;margin-top:0;"
+				     >
+				  <div id="password-warning-text" style="text-align:center;">
+				    <p class="center">
+				      Write down the above passphrase and keep it safe!
+				    </p>
+				    <p class="center">
+				      If you lose this passphrase, the account cannot be recovered.
+				    </p>
+				  </div>
+				  
+				  <p id="username-explanation-text">
+				    
+				  </p>
+				</div>
+				<div class="row" style="margin-bottom:0;">
                                     <div class="input-field col s12">
                                         <input id="password_warning_accepted" type="checkbox" class="xvalidate">
-                                        <label for="password_warning_accepted">I understand that this passphrase must be kept safe and secret, and that it cannot be recovered if forgotten or lost</label>
+                                        <label for="password_warning_accepted" class="black-text">I have written down or securely stored my passphrase.</label>
                                     </div>
                                 </div>
                             </div>

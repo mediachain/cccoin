@@ -2,6 +2,7 @@ const $ = jQuery = require('jquery');
 const savvior = require('savvior');
 const { generatePassphrase } = require('./key_generation');
 const { timeAgoString } = require('./util');
+const { grab_keys, do_logout, login } = require('./auth');
 
 const BUTTON_ACTIVE_CLASS = 'active';
 const BUTTON_INACTIVE_CLASS = 'inactive';
@@ -222,7 +223,7 @@ module.exports = exports = {
     $('#login_form').submit(function(e){
       e.preventDefault();
 
-      const username = $('#login_username').val();
+      const username = $('#login_or_username').val();
       const password = $('#login_password').val();
       const $error = $('#login_error_text');
       display_error($error, false);
@@ -230,7 +231,7 @@ module.exports = exports = {
       function cb (rr){
         if (! rr['username_success']){
           display_error($error, 'ERROR: Username too short.');
-          $("#login_username").focus();
+          $("#login_or_username").focus();
         }
 
         if (! rr['password_success']){
@@ -258,14 +259,14 @@ module.exports = exports = {
       const username = $username.val();
       const warningAccepted = $('#password_warning_accepted').is(':checked')
 
-      if (username.length < 3) {
-        $error.text('ERROR: Username too short.');
+      if (!warningAccepted) {
+        $error.text('ERROR: You must accept the passphrase warning!');
         $error.css('display', 'block');
         return false;
       }
 
-      if (!warningAccepted) {
-        $error.text('ERROR: You must accept the passphrase warning!');
+      if (username.length < 2) {
+        $error.text('ERROR: Requested username is too short.');
         $error.css('display', 'block');
         return false;
       }
@@ -304,10 +305,10 @@ module.exports = exports = {
       startingTop: '4%', // Starting top style attribute
       endingTop: '10%', // Ending top style attribute
       ready: function(modal, trigger) { // Callback for Modal open. Modal and trigger parameters available.
-        //alert("Ready");
+         //alert("Ready");
         //console.log(modal, trigger);
-        $('ul.tabs').tabs('select_tab', 'login');
-        $("#login_username").focus();
+        $('#login_form_tabs').tabs('select_tab', 'login');
+        $("#login_password").focus();
       },
       complete: function() {
         //
@@ -326,7 +327,17 @@ module.exports = exports = {
       ready: function(modal, trigger) { // Callback for Modal open. Modal and trigger parameters available.
         //alert("Ready");
         //console.log(modal, trigger);
-        $("#image_url").focus();
+        //TODO - avoid showing submit modal in the first place :)
+        const keys = grab_keys();
+        if (!keys) {
+           $('#modal1').modal('close');
+           $('#modal2').modal('open');
+           return;
+         }
+        else {
+           $("#image_url").focus();
+         }
+        
       },
       //complete: function() { alert('Closed'); } // Callback for Modal close
     });
