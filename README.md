@@ -82,3 +82,6 @@ CCCoin has all of the stadard properties you expect from a dApp,
 ## Status
 
 Future plans include evolving from a single rewards node operating at a time, which can be fired and replaced at any time via a hard fork performed by the users of the network if they collectively choose to do so, toward a softer hiring and firing mechanism which will instead allow users to continually vote to elect a consortium of operators for rewards nodes. Further streamlining third party funding of web nodes is also planned.
+
+## Setting up privatenet with geth
+See [gist](https://gist.github.com/parkan/5b99978279b5c58ca0fdff0c18ed6d88)
