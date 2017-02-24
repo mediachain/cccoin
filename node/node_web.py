@@ -18,6 +18,8 @@ from os import mkdir, listdir, makedirs, walk, rename, unlink
 from os.path import exists,join,split,realpath,splitext,dirname
 import binascii
 
+import bitcoin as btc
+
 ##
 #### Utils:
 ##
