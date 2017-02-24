@@ -60,10 +60,10 @@ from node_core import (CCCoinCore,
                        client_create_blind,
                        )
 from node_temporal import test_temporal_table
-from node_trend import test_trend_detection
+# from node_trend import test_trend_detection
 from node_contract import ContractWrapper, test_contract_wrapper
 from node_generic import setup_main
-from node_web import inner_start_web
+from node_web import inner_start_web, sig_helper, vote_helper
 
 ##
 #### Other Imports:
@@ -507,7 +507,7 @@ functions=['deploy_contract',
 def main():    
     setup_main(functions,
                globals(),
-               'offchain.py',
+               'node_main.py',
                )
 
 if __name__ == '__main__':

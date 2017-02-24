@@ -454,7 +454,7 @@ class BaseHandler(tornado.web.RequestHandler):
         from random import choice, randint
         kwargs['choice'] = choice
         kwargs['randint'] = randint
-        kwargs['all_dbs'] = all_dbs
+        kwargs['all_dbs'] = self.cccoin.DBL['all_dbs']
         kwargs['time'] = time
         
         r = self.loader.load(template_name).generate(**kwargs)
