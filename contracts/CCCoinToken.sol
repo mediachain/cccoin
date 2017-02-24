@@ -82,7 +82,7 @@ contract CCCoinToken {
     
     event TheLog(bytes);
     
-    function addLog(bytes val) { 
+    function addLog(bytes val) payable {
         TheLog(val);
     }
 

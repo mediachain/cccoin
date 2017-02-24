@@ -16,6 +16,7 @@ from os import urandom
 
 from os import mkdir, listdir, makedirs, walk, rename, unlink
 from os.path import exists,join,split,realpath,splitext,dirname
+import binascii
 
 ##
 #### Utils:
@@ -46,6 +47,8 @@ def floatget(x,
 
 import json
 import ujson
+import sys
+import bitcoin as btc
 import tornado.ioloop
 import tornado.web
 from time import time
@@ -614,12 +617,12 @@ class handle_login_2(BaseHandler):
         if hh['requested_username'] and (hh['requested_username'] in self.cccoin.DBL['TAKEN_USERNAMES_DB']):
             username_success = False
             
-        if hh['requested_username'] and self.cccoin.confirmed_username_to_user_id.lookup(hh['requested_username']):
+        if hh['requested_username'] and self.cccoin.confirmed_username_to_user_id.lookup(hh['requested_username'], default=False):
             username_success = False
 
         ## Check if user already registered a username before:
 
-        uu = self.cccoin.confirmed_user_id_to_username.lookup(the_pub)
+        uu = self.cccoin.confirmed_user_id_to_username.lookup(the_pub, default=False)
         
         if uu:
             got_username = hh['requested_username']
