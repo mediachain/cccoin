@@ -11,21 +11,37 @@
 
 ## Run
 
-1. Build frontend:
+Any regular web browser can instantly and safely use CCCoin just by going to the URL of anyone running a `web node`. Or, follow the instructions below to run your own private `web node`.
+
+Setup a [Geth](https://ethereum.github.io/go-ethereum/downloads/), [Parity](https://ethcore.io/parity.html), or [Test-RPC](https://github.com/ethereumjs/testrpc) Ethereum node, and configure its settings in `truffle.js`. Then,
+
+1. Launch your Ethereum node. Refer to the setup instructions for your chosen variant:
+   
+   ```bash
+   testrpc -p 9999 --gasLimit 0xFFFFFFFFF --gasPrice 1
+   ```
+
+2. Build frontend:
 
     ```bash
     $ cd node/frontend/ && npm install && npm run build
     ```
-2. Paste address of the deployed contract into file:
+3. (Optional) Deploy new instance of the contract:
+
+    ```bash
+    $ truffle migrate --verbose-rpc
+    ```
+
+4. Or, Paste address of the deployed contract into file:
 
     ```bash
     $ echo "CONTRACT_ADDRESS_HERE" > node/build_contracts/cccoin_contract_address.txt
     ```
 
-3. Launch your own web node:
+5. Launch your own web node:
 
     ```bash
-    $ cd node/ && python node_main.py start_web
+    $ cd node/ && pip install -r requirements.tx && python node_main.py start_web
     ```
 
 ## Incentives
