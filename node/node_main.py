@@ -6,7 +6,7 @@
 
 TEST_MODE = False
 
-DATA_DIR = 'build_offchain/'
+DATA_DIR = 'build_contracts/'
 
 DEPLOY_WITH_TRUFFLE = True
 CONTRACT_ADDRESS_TRUFFLE_FN = '../build/contracts/CCCoinToken.json'
@@ -118,12 +118,13 @@ def get_deployed_address():
                 return h['address']
             else:
                 print 'FOUND_TRUFFLE_BUT_NO_ADDRESS_KEY', CONTRACT_ADDRESS_TRUFFLE_FN
-    else:
-        if exists(CONTRACT_ADDRESS_FN):
-            with open(CONTRACT_ADDRESS_FN) as f:
-                d = f.read()
-            print ('GOT', d)
-            return d
+    
+    ## Fallback to this, even if DEPLOY_WITH_TRUFFLE was set:
+    if exists(CONTRACT_ADDRESS_FN):
+        with open(CONTRACT_ADDRESS_FN) as f:
+            d = f.read()
+        print ('GOT', d)
+        return d
     return False
 
     

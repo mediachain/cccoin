@@ -80,7 +80,7 @@ $(document).ready(function () {
   init_css();
   init_login_modal(login);
   init_submit_form(do_post);
-  init_stats_panel();
+  //init_stats_panel();
 
   check_session();
 

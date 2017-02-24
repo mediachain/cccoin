@@ -2,16 +2,35 @@
 
 **CCCoin** - Image creation, curation, and sharing incentivization network.
 
-## Unique
+## Why
 
 - **Pays you** for positive contributions.
 - **No downloads** runs instantly in web browser.
 - **Zero fees** for regular users, not micro-tipping.
 - **ERC20 standard** token compatibility.
 
-## Rewards
+## Run
 
-CCCoin has a rich ecosystem of rewards incentives for a wide variety of roles,
+1. Build frontend:
+
+    ```bash
+    $ cd node/frontend/ && npm install && npm run build
+    ```
+2. Paste address of the deployed contract into file:
+
+    ```bash
+    $ echo "CONTRACT_ADDRESS_HERE" > node/build_contracts/cccoin_contract_address.txt
+    ```
+
+3. Launch your own web node:
+
+    ```bash
+    $ cd node/ && python node_main.py start_web
+    ```
+
+## Incentives
+
+CCCoin has a rich incentives ecosystem that rewards users for a wide variety of contributions,
 
 1. **Submit your images** - Submit images that get sufficient votes, and you earn tokens. Submit images that don't get sufficient votes, you start to lose visibility for your newly submitted images.
 2. **Vote on images** - Vote on images that receive sufficient subsequent votes after your vote, and you earn tokens. Vote on images that don't receive sufficient subsequent votes, you start to lose voting power.
