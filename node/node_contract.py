@@ -159,6 +159,7 @@ class ContractWrapper:
         print ('foo', foo)
         print ('args', args)
         #print ('gas', gas_limit)
+
         
         gas_limit = 1000000
         gas_price = self.c.DEFAULT_GAS_PRICE

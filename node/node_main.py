@@ -14,6 +14,8 @@ CONTRACT_ADDRESS_FN = DATA_DIR + 'cccoin_contract_address.txt'
 
 MAIN_CONTRACT_FN = '../contracts/CCCoinToken.sol'
 
+from node_contract import DEFAULT_RPC_HOST, DEFAULT_RPC_PORT
+
 ## Rewards parameters:
 
 CORE_SETTINGS = {'REWARDS_CURATION':90.0,     ## Voting rewards
@@ -108,14 +110,27 @@ else:
 #### Contract Management:
 ##
 
+def check_anything_deployed(address):
+    from ethjsonrpc import EthJsonRpc
+    c = EthJsonRpc(DEFAULT_RPC_HOST, DEFAULT_RPC_PORT)
+    if c.eth_getCode(address) == '0x0':
+        print ('NOTHING DEPLOYED AT SPECIFIED ADDRESS:', address)
+        return False
+    return True
+
 def get_deployed_address():
+    """
+    Get contract address, check that anything is actually deployed to that address.
+    """
+    
     print ('Reading contract address from file...', CONTRACT_ADDRESS_FN)
     if DEPLOY_WITH_TRUFFLE:
         if exists(CONTRACT_ADDRESS_TRUFFLE_FN):
             with open(CONTRACT_ADDRESS_TRUFFLE_FN) as f:
                 h = json.loads(f.read())
             if 'address' in h:
-                return h['address']
+                if check_anything_deployed(h['address']):
+                    return h['address']
             else:
                 print 'FOUND_TRUFFLE_BUT_NO_ADDRESS_KEY', CONTRACT_ADDRESS_TRUFFLE_FN
     
@@ -124,7 +139,8 @@ def get_deployed_address():
         with open(CONTRACT_ADDRESS_FN) as f:
             d = f.read()
         print ('GOT', d)
-        return d
+        if check_anything_deployed(d):
+            return d
     return False
 
     
