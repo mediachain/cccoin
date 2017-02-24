@@ -159,19 +159,21 @@ class ContractWrapper:
         print ('foo', foo)
         print ('args', args)
         #print ('gas', gas_limit)
-
+        
         gas_limit = 1000000
-        gas_price = 100
+        gas_price = self.c.DEFAULT_GAS_PRICE
         value = web3.utils.currency.to_wei(1,'ether')
-                            
-        tx = self.c.call_with_transaction(send_from,
-                                          send_to,
-                                          foo,
-                                          args,
-                                          gas = gas_limit,
-                                          gas_price = gas_price,
-                                          value = value,
-                                          )
+
+        data = self.c._encode_function(foo, args)
+        data_hex = '0x' + data.encode('hex')
+        
+        tx = self.c.eth_sendTransaction(from_address = send_from,
+                                        to_address = send_to,
+                                        data = data_hex,
+                                        gas = gas_limit,
+                                        gas_price = gas_price,
+                                        value = value,
+                                        )
         
         if block:
             receipt = self.c.eth_getTransactionReceipt(tx) ## blocks to ensure transaction is mined
