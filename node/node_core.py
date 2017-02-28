@@ -1187,7 +1187,7 @@ class CCCoinCore:
             sort_by = 'score'
             
         assert sort_by in ['score', 'created_time'], sort_by
-                
+        
         ## Filter:
         
         if filter_users:

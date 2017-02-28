@@ -10,6 +10,8 @@ from node_core import (CCCoinCore,
                        client_create_blind,
                        )
 
+from node_generic import htime_ago
+
 import multiprocessing
 from random import randint, choice
 from os import urandom
@@ -459,6 +461,7 @@ class BaseHandler(tornado.web.RequestHandler):
         kwargs['randint'] = randint
         kwargs['all_dbs'] = self.cccoin.DBL['all_dbs']
         kwargs['time'] = time
+        kwargs['htime_ago'] = htime_ago
         
         r = self.loader.load(template_name).generate(**kwargs)
         

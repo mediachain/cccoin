@@ -1,7 +1,7 @@
 ethjsonrpc==0.3.0
 ujson==1.35
 tornado==4.3
-pycryptodome==3.4.3
-ethereum==1.0.8
+pycryptodome==3.4.5
+ethereum==1.6.0
 web3==3.5.2
 cbor==1.0.0

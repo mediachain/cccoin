@@ -2,14 +2,12 @@ pragma solidity ^0.4.4;
 
 contract CCCoinToken {
     
-    //**** Constant token-specific fields:
-    
-    string public constant name = "CCCoin";
-    string public constant symbol = "CCC";
-    uint public constant decimals = 18;
-    uint public constant MAX_CREATION_RATE_PER_SECOND = 1; 
-    
     //*** Fields set in constructor:
+    
+    string public name; //= "CCCoin";
+    string public symbol; //= "CCC";
+    uint public decimals; //= 18;
+    uint public max_creation_rate_per_second; //= 1;
     
     address public cccoin_address; // Contract owner
     address public minter_address; // Has permission to mint
@@ -60,7 +58,7 @@ contract CCCoinToken {
     }
     
     modifier max_rate_not_reached(uint x) {
-        assert((totalSupply / (now - x)) < MAX_CREATION_RATE_PER_SECOND);
+        assert((totalSupply / (now - x)) < max_creation_rate_per_second);
         _;
     }
 
@@ -72,9 +70,13 @@ contract CCCoinToken {
     
     //**** Constructor:
     
-    function CCCoinToken(address setMinter, address set_cccoin, uint set_start_time) {
-        minter_address = setMinter;
-        cccoin_address = set_cccoin;
+    function CCCoinToken(string set_name, string set_symbol, uint set_max_creation_rate_per_second, address set_minter_address, address set_cccoin_address, uint set_start_time) {
+
+	name = set_name;
+	symbol = set_symbol;
+	max_creation_rate_per_second = set_max_creation_rate_per_second;
+        minter_address = set_minter_address;
+        cccoin_address = set_cccoin_address;
         start_time = set_start_time;
     }
     

@@ -13,6 +13,8 @@ class ContractWrapper:
     
     def __init__(self,
                  the_code = False,
+                 the_sig = None,
+                 the_args = None,
                  the_address = False,
                  events_callback = False,
                  rpc_host = DEFAULT_RPC_HOST,
@@ -21,6 +23,7 @@ class ContractWrapper:
                  final_confirm_state = 'BLOCKCHAIN_CONFIRMED',
                  contract_address = False,
                  start_at_current_block = False,
+                 auto_deploy = True,
                  ):
         """
         Simple contract wrapper, assists with deploying contract, sending transactions, and tracking event logs.
@@ -28,16 +31,21 @@ class ContractWrapper:
         Args:
         - the_code - solidity code for contract that should be deployed, prior to any operations.
         - the_address - address of already-deployed main contract.
-        - `events_callback` will be called upon each state transition, according to `confirm_states`, 
+        - events_callback - called upon each state transition, according to `confirm_states`, 
           until `final_confirm_state`.
-        - `contract_address` contract address, from previous `deploy()` call.
+        - contract_address contract address, from previous `deploy()` call.
+        - the_sig - optional constructor signature.
+        - the_args - optional constructor args.
         """
 
         self.start_at_current_block = start_at_current_block
         
         self.the_code = the_code
-        self.contract_address = the_address
+        self.the_sig = the_sig
+        self.the_args = the_args
 
+        self.contract_address = the_address
+        
         assert self.the_code or self.contract_address
         
         self.loop_block_num = -1
@@ -54,22 +62,53 @@ class ContractWrapper:
 
         self.latest_block_num_done = 0
 
-        if the_code:
-            self.deploy()
+        self.is_deployed = False
         
-                    
-    def deploy(self):
-        print ('DEPLOYING_CONTRACT...')        
+        if auto_deploy:
+            if the_address:
+                assert self.check_anything_deployed(the_address), ('NOTHING DEPLOYED AT SPECIFIED ADDRESS:', the_address)
+                self.is_deployed = True
+            elif the_code:
+                self.deploy()
+        
+    def check_anything_deployed(self, address):
+        """ Basic sanity check, checks if ANY code is deployed at provided address. """
+        if self.c.eth_getCode(address) == '0x0':
+            return False
+        return True
+            
+    def deploy(self,
+               the_sig = False,
+               the_args = False,
+               ):
+        """ Deploy contract. Optional args_sig and args used to pass arguments to contract constructor."""
+
+        if the_sig is not False:
+            self.the_sig = the_sig
+        
+        if the_args is not False:
+            self.the_args = the_args
+
+        assert self.the_code
+        
+        print ('DEPLOYING_CONTRACT...', the_sig, the_args)        
         # get contract address
         xx = self.c.eth_compileSolidity(self.the_code)
         #print ('GOT',xx)
         compiled = xx['code']
-        contract_tx = self.c.create_contract(self.c.eth_coinbase(), compiled, gas=3000000)
+        contract_tx = self.c.create_contract(from_ = self.c.eth_coinbase(),
+                                             code = compiled,
+                                             gas = 3000000,
+                                             sig = self.the_sig,
+                                             args = self.the_args,
+                                             )
         self.contract_address = str(self.c.get_contract_address(contract_tx))
+        self.is_deployed = True
         print ('DEPLOYED', self.contract_address)
         return self.contract_address
 
     def loop_once(self):
+        assert self.is_deployed, 'Must deploy contract first.'
         
         if self.c.eth_syncing():
             print ('BLOCKCHAIN_STILL_SYNCING')
@@ -85,7 +124,9 @@ class ContractWrapper:
         """
         https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_newfilter
         """
-
+        
+        assert self.is_deployed, 'Must deploy contract first.'
+        
         if self.start_at_current_block:
             start_block = self.c.eth_blockNumber()
         else:
@@ -130,7 +171,7 @@ class ContractWrapper:
         
             
     def send_transaction(self,
-                         foo,
+                         args_sig,
                          args,
                          callback = False,
                          send_from = False,
@@ -146,7 +187,10 @@ class ContractWrapper:
         
         https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_sendtransaction
         """
-        print ('SEND_TRANSACTION:', foo, args)
+
+        assert self.is_deployed, 'Must deploy contract first.'
+
+        print ('SEND_TRANSACTION:', args_sig, args)
 
         if send_from is False:
             send_from = self.c.eth_coinbase()
@@ -156,7 +200,7 @@ class ContractWrapper:
         print ('====TRANSACTION')
         print ('send_from', send_from)
         print ('send_to', send_to)
-        print ('foo', foo)
+        print ('args_sig', args_sig)
         print ('args', args)
         #print ('gas', gas_limit)
 
@@ -165,7 +209,7 @@ class ContractWrapper:
         gas_price = self.c.DEFAULT_GAS_PRICE
         value = web3.utils.currency.to_wei(1,'ether')
 
-        data = self.c._encode_function(foo, args)
+        data = self.c._encode_function(args_sig, args)
         data_hex = '0x' + data.encode('hex')
         
         tx = self.c.eth_sendTransaction(from_address = send_from,
@@ -192,6 +236,9 @@ class ContractWrapper:
         """
         Confirm outgoing transactions.
         """
+
+        assert self.is_deployed, 'Must deploy contract first.'
+
         for tx, (callback, attempt_block_num) in self.pending_transactions.items():
 
             ## Compare against the block_number where it attempted to be included:
@@ -214,8 +261,8 @@ class ContractWrapper:
                     callback(receipt)
                 del self.pending_transactions[tx]
     
-    def read_transaction(self, foo, value):
-        rr = self.c.call(self.c.eth_coinbase(), self.contract_address, foo, value)
+    def read_transaction(self, args_sig, value):
+        rr = self.c.call(self.c.eth_coinbase(), self.contract_address, args_sig, value)
         return rr
 
     
