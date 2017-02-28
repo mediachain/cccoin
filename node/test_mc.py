@@ -9,6 +9,10 @@ import shutil
 from utils import find_open_port
 from tornado.ioloop import IOLoop
 
+# test that CCCoinCore writes to mediachain successfully
+# Must have `mcnode` on your $PATH for this to work
+
+# pytest fixture configuration (see conftest.py)
 # override default CCCoinCore init args for `cccoin_core` fixture.  Only applies within this module.
 cccoin_core_args = {'write_to_mc': True}
 
