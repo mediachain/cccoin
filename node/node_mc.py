@@ -9,7 +9,7 @@ import base64
 from tornado import gen
 from tornado.httpclient import AsyncHTTPClient, HTTPRequest
 from urlparse import urljoin
-from tornado.ioloop import IOLoop
+from tornado.ioloop import IOLoop, PeriodicCallback
 
 
 def ensure_list(x):
@@ -38,7 +38,7 @@ def encode_object(obj):
     return base64.b64encode(cbor.dumps(obj))
 
 
-class MediachainWriter(object):
+class MediachainClient(object):
     """
     Writes data to a mediachain node using the HTTP API.
     If no API url is given, assumes the node is running on
@@ -64,6 +64,12 @@ class MediachainWriter(object):
                 url=url,
                 method='POST',
                 body=body))
+
+    @gen.coroutine
+    def query(self, query_str):
+        result = yield self._post('query', query_str)
+        objects = map(json.loads, filter(lambda s: len(s) > 0, result.body.strip().split('\n')))
+        raise gen.Return(objects)
 
     @gen.coroutine
     def put_data(self, obj):
@@ -106,21 +112,20 @@ class MediachainWriter(object):
                 'deps': ensure_list(deps),
                 'tags': ensure_list(tags)}
 
-        response = yield self._post('publish/' + namespace, json.dumps(stmt))
+        response = yield self._post('publish/' + namespace, json.dumps(stmt, separators=(',',':')))
         raise gen.Return(response.body.strip())
 
 def test_mc_simple():
     print ('test_mc_write()')
         
-    w = MediachainWriter()
+    w = MediachainClient()
     
     rr = IOLoop.current().run_sync(lambda: w.publish('scratch.pytest', {'hello': 'from_python'}))
     
     print ('GOT', rr)
 
-from threading import current_thread,Thread
-from Queue import Queue
-from time import sleep
+from threading import Thread
+from Queue import Queue, Empty
 
 class MediachainQueue:
     """ 
@@ -144,9 +149,8 @@ class MediachainQueue:
         self.sleep_time_orig = sleep_time
         self.sleep_time = sleep_time
         self.in_q = Queue(max_size)
-        self.mw = MediachainWriter(mc_api_url = mc_api_url,
-                                   default_namespace = default_namespace,
-                                   )
+        self.mc_api_url = mc_api_url
+        self.mc_namespace = default_namespace
         self.start()
     
     def start(self):
@@ -159,19 +163,28 @@ class MediachainQueue:
 
     def worker(self):
         io_loop = IOLoop()
+        mw = MediachainClient(mc_api_url = self.mc_api_url,
+                              default_namespace = self.mc_namespace,
+                              )
+
+        def pop_item():
+            def on_complete(*args):
+                self.in_q.task_done()
+            try:
+                args, kw = self.in_q.get(block=False)
+                io_loop.add_future(mw.publish(*args, **kw), on_complete)
+            except Empty:
+                pass
+
+        periodic_cb = PeriodicCallback(pop_item, int(self.sleep_time * 1000), io_loop)
+        periodic_cb.start()
         io_loop.start()
-        while True:
-            args, kw = self.in_q.get(block = True)
-            io_loop.run_sync(lambda: self.mw.publish(*args, **kw))
     
     def wait_for_completion(self):
-        while True:
-            if not self.in_q.size():
-                break
-            sleep(self.sleep_time)
+        self.in_q.join()
 
     def __enter__(self):
-        pass
+        return self
     
     def __exit__(self):
         self.wait_for_completion()
