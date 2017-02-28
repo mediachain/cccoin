@@ -4,10 +4,10 @@ contract CCCoinToken {
     
     //*** Fields set in constructor:
     
-    string public name; //= "CCCoin";
-    string public symbol; //= "CCC";
-    uint public decimals; //= 18;
-    uint public max_creation_rate_per_second; //= 1;
+    string public name;
+    string public symbol;
+    uint public decimals;
+    uint public max_creation_rate_per_second;
     
     address public cccoin_address; // Contract owner
     address public minter_address; // Has permission to mint
@@ -93,6 +93,7 @@ contract CCCoinToken {
     /// Mint new TOK or LOCK tokens, via mining rewards:
     function mintTokens(uint reward_tok, uint reward_lock, address recipient) //uint block_num, uint rewards_freq, uint tot_tok, uint tot_lock
     external
+    payable
     only_minter
     max_rate_not_reached(start_time)
     {
@@ -116,6 +117,7 @@ contract CCCoinToken {
     // Cashout LOCK to TOK at current tok_per_lock exchange rate. Only minter can do this, to limit withdrawl rate:
     function mintLockCashout(address recipient, uint amount_lock)
     external
+    payable
     only_minter
     {
 	assert(amount_lock <= balances_lock[recipient]);
@@ -126,6 +128,7 @@ contract CCCoinToken {
     // Update conversion rate:
     function updateTokPerLockRate(uint rate)
     external
+    payable
     only_minter
     {
         tok_per_lock_rate = rate;
@@ -136,6 +139,7 @@ contract CCCoinToken {
     // Lockup TOK to LOCK at current tok_per_lock exchange rate. Users can do this themselves:
     function lockupTok(address recipient, uint amount_tok)
     external
+    payable
     {
 	assert(amount_tok <= balances[recipient]);
         balances_lock[recipient] = safeAdd(balances[recipient], safeDiv(balances_lock[recipient], tok_per_lock_rate));

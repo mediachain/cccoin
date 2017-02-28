@@ -207,6 +207,7 @@ def test_contract_1_inner(cw, delay):
         
     cw.loop_once()
 
+from ethjsonrpc.exceptions import BadResponseError
 
 def test_contract_1():
     """
@@ -215,31 +216,48 @@ def test_contract_1():
     
     print ('test_contract_1()')
     
-    cw = setup_contract()
+    cw = setup_contract(set_max_creation_rate_per_second = 1)
     
-    ## Mint way too fast, check that only first minting goes through:
-    test_contract_1_inner(cw, delay = 0)
-    
-    rr = cw.c.call(address = contract_address,
-                   sig = 'totalSupply()',
-                   args = [],
-                   result_types = ['uint256'],  ## uint and int are aliases for uint256 and int256, respectively
-                   )
+    ## Mint slowly (half the maximum speed), check that only first minting goes through:
+    test_contract_1_inner(cw, delay = 2)
+
+    print ('GET_RESULT')
+
+    caught = False
+    try:
+        rr = cw.c.call(address = cw.contract_address,
+                       sig = 'totalSupply()',
+                       args = [],
+                       result_types = ['uint256'],  ## uint and int are aliases for uint256 and int256, respectively
+                       )
+    except BadResponseError as e:
+        print 'CAUGHT_ASSERTION'
+        caught = True
+        
+    assert not caught, ('FAILED - `max_rate_not_reached` should not have triggered assertion.',)
 
     print ('RESULT_1:', rr[0])
     
-    ## Mint at twice the minimum speed, check that only first minting goes through:
+    ## Mint way too fast, check that only first minting goes through:
     test_contract_1_inner(cw, delay = 2)
 
-    rr = cw.c.call(address = contract_address,
-                   sig = 'totalSupply()',
-                   args = [],
-                   result_types = ['uint256'],  ## uint and int are aliases for uint256 and int256, respectively
-                   )
+    print ('GET_RESULT')
+
+    caught = False
+
+    try:
+        rr = cw.c.call(address = cw.contract_address,
+                       sig = 'totalSupply()',
+                       args = [],
+                       result_types = ['uint256'],  ## uint and int are aliases for uint256 and int256, respectively
+                       )
+    except BadResponseError as e:
+        print 'CAUGHT_ASSERTION'
+        caught = True
+    
+    assert caught, ('FAILED - `max_rate_not_reached` assertion failure not caught.',)
 
     print ('RESULT_2:', rr[0])
-
-    assert False, ('TODO - figure out expected output values.')
     
     print ('PASSED')
 
