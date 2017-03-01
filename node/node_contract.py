@@ -5,6 +5,7 @@ import ethereum.utils ## Slow...
 
 from ethjsonrpc.utils import hex_to_dec, clean_hex, validate_block
 from ethjsonrpc import EthJsonRpc
+from time import sleep
 
 DEFAULT_RPC_HOST = '127.0.0.1'
 DEFAULT_RPC_PORT = 9999
@@ -95,13 +96,37 @@ class ContractWrapper:
         # get contract address
         xx = self.c.eth_compileSolidity(self.the_code)
         #print ('GOT',xx)
-        compiled = xx['code']
+        compiled = None
+        try:
+            compiled = xx['code']
+        except KeyError:
+            # geth seems to like putting the compiler output into an inner dict keyed by input filename,
+            # e.g {'CCCoinToken.sol': {'code': '...', 'etc': '...'}
+            for k, v in xx.iteritems():
+                if isinstance(v, dict) and 'code' in v:
+                    compiled = v['code']
+                    break
+            if compiled is None:
+                raise Exception('Unable to retrieve compiled code from eth_compileSolidity RPC call')
+
+
+        pre_deploy_block_num = self.c.eth_blockNumber()
         contract_tx = self.c.create_contract(from_ = self.c.eth_coinbase(),
                                              code = compiled,
                                              gas = 3000000,
                                              sig = self.the_sig,
                                              args = self.the_args,
                                              )
+        print('CONTRACT DEPLOYED, WAITING FOR CONFIRMATION')
+        # need to wait for a couple blocks to be mined before we can get the address
+        # 2 blocks seems to work for me locally, but it seems best to use the BLOCKCHAIN_CONFIRMED
+        # value if it's greater
+        current_block_num = self.c.eth_blockNumber()
+        blocks_needed = max(2, self.confirm_states.get('BLOCKCHAIN_CONFIRMED', 2))
+        while current_block_num < pre_deploy_block_num + blocks_needed:
+            sleep(0.1)
+            current_block_num = self.c.eth_blockNumber()
+
         self.contract_address = str(self.c.get_contract_address(contract_tx))
         self.is_deployed = True
         print ('DEPLOYED', self.contract_address)
