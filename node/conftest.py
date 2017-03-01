@@ -56,7 +56,8 @@ def eth_rpc_port(request):
         yield int(external_rpc_port)
     else:
         open_port = find_open_port()
-        testrpc_process = Popen(["testrpc", "-p", str(open_port)], stdout=PIPE)
+        auto_block_time = 0.1
+        testrpc_process = Popen(["testrpc", "-b", str(auto_block_time), "-p", str(open_port)], stdout=PIPE)
         while not testrpc_process.stdout.readline().lower().startswith('listening'):
             pass
 
