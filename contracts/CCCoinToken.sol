@@ -7,12 +7,14 @@ contract CCCoinToken {
     string public name;
     string public symbol;
     uint public decimals;
-    uint public max_creation_rate_per_second;
     
-    address public cccoin_address; // Contract owner
-    address public minter_address; // Has permission to mint
-    uint public start_time;        // Start time in seconds
-    uint public tok_per_lock_rate; // Exchange rate between tok and lock
+    uint public max_creation_rate_per_second; // Maximum token creation rate per second, excluding lock-related inflation.
+    uint public max_lock_apr;                 // Maximum lock inflation rate per year.
+    
+    address public cccoin_address;            // Contract owner
+    address public minter_address;            // Has permission to mint
+    uint public start_time;                   // Start time in seconds
+    uint public tok_per_lock_rate;            // Exchange rate between tok and lock
     
     //**** ERC20 TOK fields and events:
 
@@ -70,10 +72,11 @@ contract CCCoinToken {
     
     //**** Constructor:
     
-    function CCCoinToken(string set_name, string set_symbol, uint set_max_creation_rate_per_second, address set_minter_address, address set_cccoin_address, uint set_start_time) {
+    function CCCoinToken(string set_name, string set_symbol, uint set_decimals, uint set_max_creation_rate_per_second, address set_minter_address, address set_cccoin_address, uint set_start_time) {
 
 	name = set_name;
 	symbol = set_symbol;
+	decimals = set_decimals;
 	max_creation_rate_per_second = set_max_creation_rate_per_second;
         minter_address = set_minter_address;
         cccoin_address = set_cccoin_address;
