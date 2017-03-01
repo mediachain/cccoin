@@ -13,7 +13,8 @@ from tornado.ioloop import IOLoop
 # Must have `mcnode` on your $PATH for this to work
 
 # pytest fixture configuration (see conftest.py)
-# override default CCCoinCore init args for `cccoin_core` fixture.  Only applies within this module.
+
+contract_args = {'start_at_current_block': True, 'settings_confirm_states': {'BLOCKCHAIN_CONFIRMED':1}}
 cccoin_core_args = {'write_to_mc': True}
 
 @pytest.fixture
@@ -51,6 +52,11 @@ def test_cccoin_mc_write(mc_node_url, cccoin_core):
     cccoin_core.submit_blind_action(blind_post)
     cccoin_core.submit_unblind_action(unblind_post)
     cccoin_core.cw.loop_once()
+    start_block = cccoin_core.cw.latest_block_num
+
+    while cccoin_core.cw.latest_block_num < start_block + 3: # not sure why / if this is the magic number, but it WFM...
+        cccoin_core.cw.loop_once()
+        sleep(0.1)
 
     cccoin_core.mcq.wait_for_completion()
 

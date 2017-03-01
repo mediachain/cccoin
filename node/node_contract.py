@@ -5,6 +5,7 @@ import ethereum.utils ## Slow...
 
 from ethjsonrpc.utils import hex_to_dec, clean_hex, validate_block
 from ethjsonrpc import EthJsonRpc
+from time import sleep
 
 DEFAULT_RPC_HOST = '127.0.0.1'
 DEFAULT_RPC_PORT = 9999
@@ -56,6 +57,7 @@ class ContractWrapper:
 
         self.c = EthJsonRpc(rpc_host, rpc_port)
 
+        self.current_block_at_init = self.c.eth_blockNumber()
         self.pending_transactions = {}  ## {tx:callback}
         self.pending_logs = {}
         self.latest_block_num = -1
@@ -95,13 +97,37 @@ class ContractWrapper:
         # get contract address
         xx = self.c.eth_compileSolidity(self.the_code)
         #print ('GOT',xx)
-        compiled = xx['code']
+        compiled = None
+        try:
+            compiled = xx['code']
+        except KeyError:
+            # geth seems to like putting the compiler output into an inner dict keyed by input filename,
+            # e.g {'CCCoinToken.sol': {'code': '...', 'etc': '...'}
+            for k, v in xx.iteritems():
+                if isinstance(v, dict) and 'code' in v:
+                    compiled = v['code']
+                    break
+            if compiled is None:
+                raise Exception('Unable to retrieve compiled code from eth_compileSolidity RPC call')
+
+
+        pre_deploy_block_num = self.c.eth_blockNumber()
         contract_tx = self.c.create_contract(from_ = self.c.eth_coinbase(),
                                              code = compiled,
                                              gas = 3000000,
                                              sig = self.the_sig,
                                              args = self.the_args,
                                              )
+        print('CONTRACT DEPLOYED, WAITING FOR CONFIRMATION')
+        # need to wait for a couple blocks to be mined before we can get the address
+        # 2 blocks seems to work for me locally, but it seems best to use the BLOCKCHAIN_CONFIRMED
+        # value if it's greater
+        current_block_num = self.c.eth_blockNumber()
+        blocks_needed = max(2, self.confirm_states.get('BLOCKCHAIN_CONFIRMED', 2))
+        while current_block_num < pre_deploy_block_num + blocks_needed:
+            sleep(0.1)
+            current_block_num = self.c.eth_blockNumber()
+
         self.contract_address = str(self.c.get_contract_address(contract_tx))
         self.is_deployed = True
         print ('DEPLOYED', self.contract_address)
@@ -128,9 +154,9 @@ class ContractWrapper:
         assert self.is_deployed, 'Must deploy contract first.'
         
         if self.start_at_current_block:
-            start_block = self.c.eth_blockNumber()
+            start_block = ethereum.utils.int_to_hex(self.current_block_at_init)
         else:
-            start_block = 0
+            start_block = '0x0' # int_to_hex encodes 0 as '0x' :(
         
         self.latest_block_num = self.c.eth_blockNumber()
 
@@ -142,18 +168,18 @@ class ContractWrapper:
             
             from_block = max(1,self.latest_block_num_done)
             
-            to_block = self.latest_block_num_confirmed
+            to_block = ethereum.utils.int_to_hex(self.latest_block_num_confirmed)
             
             got_block = 0
             
-            params = {'fromBlock': ethereum.utils.int_to_hex(start_block),#ethereum.utils.int_to_hex(from_block),#'0x01'
-                      'toBlock': ethereum.utils.int_to_hex(to_block),
+            params = {'from_block': start_block,#ethereum.utils.int_to_hex(from_block),#'0x01'
+                      'to_block': to_block,
                       'address': self.contract_address,
                       }
             
             print ('eth_newFilter', 'do_state:', do_state, 'latest_block_num:', self.latest_block_num, 'params:', params)
             
-            self.filter = str(self.c.eth_newFilter(params))
+            self.filter = str(self.c.eth_newFilter(**params))
             
             print ('eth_getFilterChanges', self.filter)
             
@@ -248,7 +274,7 @@ class ContractWrapper:
             
             receipt = self.c.eth_getTransactionReceipt(tx)
             
-            if receipt['blockNumber']:
+            if receipt is not None and 'blockNumber' in receipt:
                 actual_block_number = ethereum.utils.parse_int_or_hex(receipt['blockNumber'])
             else:
                 ## TODO: wasn't confirmed after a long time.
