@@ -1,6 +1,7 @@
 import pytest
 from time import time, sleep
 import bitcoin as btc
+from node_contract import get_compiled_code, wait_for_confirmation
 
 ## pytest fixture configuration (see conftest.py)
 force_redeploy_contract = True
@@ -49,7 +50,10 @@ def test_get_lang_version(eth_json_rpc):
         }
         """
     try:
-        eth_json_rpc.eth_compileSolidity(minimal_code)['info']['compilerVersion']
+        result = eth_json_rpc.eth_compileSolidity(minimal_code)
+        unwrapped = result.get('CCCoin', result)
+        print('Compiler version', unwrapped['info']['compilerVersion'])
+
     except KeyError as e:
         assert False, 'Compiler did not return info.compilerVersion field'
 
@@ -64,13 +68,17 @@ def test_getters(eth_json_rpc):
         """
     c = eth_json_rpc
     xx = c.eth_compileSolidity(minimal_code)
-    compiled = xx['code']
+    compiled = get_compiled_code(xx)
+
     contract_tx = c.create_contract(c.eth_coinbase(),
                                     compiled,
                                     gas=3000000,
                                     )
-    contract_address = str(c.get_contract_address(contract_tx))
 
+    print('WAITING FOR TX confirmation', contract_tx)
+    wait_for_confirmation(c, contract_tx)
+
+    contract_address = str(c.get_contract_address(contract_tx))
     rr = c.call(address = contract_address,
                 sig = 'the_var()',
                 args = [],

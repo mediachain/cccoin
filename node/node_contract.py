@@ -97,21 +97,9 @@ class ContractWrapper:
         # get contract address
         xx = self.c.eth_compileSolidity(self.the_code)
         #print ('GOT',xx)
-        compiled = None
-        try:
-            compiled = xx['code']
-        except KeyError:
-            # geth seems to like putting the compiler output into an inner dict keyed by input filename,
-            # e.g {'CCCoinToken.sol': {'code': '...', 'etc': '...'}
-            for k, v in xx.iteritems():
-                if isinstance(v, dict) and 'code' in v:
-                    compiled = v['code']
-                    break
-            if compiled is None:
-                raise Exception('Unable to retrieve compiled code from eth_compileSolidity RPC call')
+        compiled = get_compiled_code(xx)
 
 
-        pre_deploy_block_num = self.c.eth_blockNumber()
         contract_tx = self.c.create_contract(from_ = self.c.eth_coinbase(),
                                              code = compiled,
                                              gas = 3000000,
@@ -119,14 +107,7 @@ class ContractWrapper:
                                              args = self.the_args,
                                              )
         print('CONTRACT DEPLOYED, WAITING FOR CONFIRMATION')
-        # need to wait for a couple blocks to be mined before we can get the address
-        # 2 blocks seems to work for me locally, but it seems best to use the BLOCKCHAIN_CONFIRMED
-        # value if it's greater
-        current_block_num = self.c.eth_blockNumber()
-        blocks_needed = max(2, self.confirm_states.get('BLOCKCHAIN_CONFIRMED', 2))
-        while current_block_num < pre_deploy_block_num + blocks_needed:
-            sleep(0.1)
-            current_block_num = self.c.eth_blockNumber()
+        wait_for_confirmation(self.c, contract_tx)
 
         self.contract_address = str(self.c.get_contract_address(contract_tx))
         self.is_deployed = True
@@ -297,6 +278,24 @@ class ContractWrapper:
         return rr
         
 
+def get_compiled_code(rpc_compiler_output):
+    compiled = None
+    try:
+        compiled = rpc_compiler_output['code']
+    except KeyError:
+        # geth seems to like putting the compiler output into an inner dict keyed by input filename,
+        # e.g {'CCCoinToken.sol': {'code': '...', 'etc': '...'}
+        for k, v in rpc_compiler_output.iteritems():
+            if isinstance(v, dict) and 'code' in v:
+                compiled = v['code']
+                break
+    if compiled is None:
+        raise Exception('Unable to retrieve compiled code from eth_compileSolidity RPC call')
+    return compiled
+
+def wait_for_confirmation(eth_json_rpc, tx_hash, sleep_time=0.1):
+    while eth_json_rpc.eth_getTransactionReceipt(tx_hash) is None:
+        sleep(sleep_time)
 
 def test_contract_wrapper():
     pass

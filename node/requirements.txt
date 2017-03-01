@@ -1,4 +1,3 @@
-ethjsonrpc==0.3.0
 ujson==1.35
 tornado==4.3
 pycryptodome==3.4.5
@@ -7,3 +6,4 @@ web3==3.5.2
 cbor==1.0.0
 pytest==3.0.6
 python-dateutil==2.6.0
+-e git://github.com/yusefnapora/ethjsonrpc.git@dcbc659a216a90c22681ab1272c1ca46663337fe#egg=ethjsonrpc
