@@ -57,6 +57,7 @@ class ContractWrapper:
 
         self.c = EthJsonRpc(rpc_host, rpc_port)
 
+        self.current_block_at_init = self.c.eth_blockNumber()
         self.pending_transactions = {}  ## {tx:callback}
         self.pending_logs = {}
         self.latest_block_num = -1
@@ -153,9 +154,9 @@ class ContractWrapper:
         assert self.is_deployed, 'Must deploy contract first.'
         
         if self.start_at_current_block:
-            start_block = self.c.eth_blockNumber()
+            start_block = ethereum.utils.int_to_hex(self.current_block_at_init)
         else:
-            start_block = 0
+            start_block = '0x0' # int_to_hex encodes 0 as '0x' :(
         
         self.latest_block_num = self.c.eth_blockNumber()
 
@@ -167,18 +168,18 @@ class ContractWrapper:
             
             from_block = max(1,self.latest_block_num_done)
             
-            to_block = self.latest_block_num_confirmed
+            to_block = ethereum.utils.int_to_hex(self.latest_block_num_confirmed)
             
             got_block = 0
             
-            params = {'fromBlock': ethereum.utils.int_to_hex(start_block),#ethereum.utils.int_to_hex(from_block),#'0x01'
-                      'toBlock': ethereum.utils.int_to_hex(to_block),
+            params = {'from_block': start_block,#ethereum.utils.int_to_hex(from_block),#'0x01'
+                      'to_block': to_block,
                       'address': self.contract_address,
                       }
             
             print ('eth_newFilter', 'do_state:', do_state, 'latest_block_num:', self.latest_block_num, 'params:', params)
             
-            self.filter = str(self.c.eth_newFilter(params))
+            self.filter = str(self.c.eth_newFilter(**params))
             
             print ('eth_getFilterChanges', self.filter)
             
@@ -273,7 +274,7 @@ class ContractWrapper:
             
             receipt = self.c.eth_getTransactionReceipt(tx)
             
-            if receipt['blockNumber']:
+            if receipt is not None and 'blockNumber' in receipt:
                 actual_block_number = ethereum.utils.parse_int_or_hex(receipt['blockNumber'])
             else:
                 ## TODO: wasn't confirmed after a long time.
