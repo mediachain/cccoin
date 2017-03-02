@@ -9,7 +9,7 @@
 | **Rewards users** for submitting images.      | **Rewards voters** for curating images. | 
 | **Rewards servers** for contributing website hosting.      | **Rewards sponsors** for sponsoring gas fees.      | 
 | **No downloads** runs instantly in any web browser. | **Zero fees** for regular users, not micro-tipping.      | 
-| **ERC20 standard** token rewards. | **Rewards commitment** with staking interest. |
+| **ERC20 standard** token rewards. | **Rewards commitment** with long-term staking interest. |
 
 
 ## Technologies
