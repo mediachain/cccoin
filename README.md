@@ -66,8 +66,11 @@ Or run your own web node,
    $ git clone https://github.com/mediachainlabs/cccoin.git
    ```
 
+
 4. Install dependencies:
    ```bash
+   $ curl -sL https://deb.nodesource.com/setup_7.x | sudo -E bash -
+   $ sudo apt-get install nodejs libssl-dev npm
    $ cd cccoin/node/ && pip install -r requirements.txt
    $ cd frontend/ && npm install && npm run build
    ```
