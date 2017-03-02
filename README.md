@@ -2,9 +2,7 @@
 
 **CCCoin** - Image creation, curation, and sharing incentivization network.
 
-## Intro
-
-[Try CCCoin here!](http://52.168.175.195)
+## [Join CCCoin Now](http://52.168.175.195)
 
 |          |             | 
 | ------------- | :------------- | 
