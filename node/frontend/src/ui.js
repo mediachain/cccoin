@@ -309,7 +309,7 @@ module.exports = exports = {
       ready: function(modal, trigger) { // Callback for Modal open. Modal and trigger parameters available.
          //alert("Ready");
         //console.log(modal, trigger);
-        $('#login_form_tabs').tabs('select_tab', 'login');
+        $('#login_form_tabs').tabs('select_tab', 'signup');
         $("#login_password").focus();
       },
       complete: function() {
