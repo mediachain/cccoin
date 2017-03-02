@@ -55,26 +55,26 @@ Or run your own web node,
 
 1. Setup either [Geth](https://ethereum.github.io/go-ethereum/downloads/), [Parity](https://ethcore.io/parity.html), or [Test-RPC](https://github.com/ethereumjs/testrpc). Configure its settings in `truffle.js`. Settings for connecting to the CCCoin network with Geth 1.5.2 can be found [here](https://gist.github.com/parkan/5b99978279b5c58ca0fdff0c18ed6d88).
 
-2. Launch your Ethereum node. Refer to the setup instructions for your chosen variant:
+2. Clone:
+   ```bash
+   $ git clone https://github.com/mediachainlabs/cccoin.git
+   ```
+
+3. Install dependencies:
+   ```bash
+   $ curl -sL https://deb.nodesource.com/setup_7.x | sudo -E bash -
+   $ sudo apt-get install nodejs libssl-dev npm
+   $ cd cccoin/node/ && pip install -r requirements.txt 
+   $ cd frontend/ && npm install && npm run build # OPTIONAL
+   $ sudo npm install -g git+https://github.com/ethereumjs/testrpc # OPTIONAL
+   ```
+
+4. Launch your Ethereum node. Refer to the setup instructions for your chosen variant:
    
    ```bash
    $ testrpc -p 9999 --gasLimit 0xFFFFFFFFF --gasPrice 1
    ```
 
-3. Clone:
-   ```bash
-   $ git clone https://github.com/mediachainlabs/cccoin.git
-   ```
-
-
-4. Install dependencies:
-   ```bash
-   $ curl -sL https://deb.nodesource.com/setup_7.x | sudo -E bash -
-   $ sudo apt-get install nodejs libssl-dev npm
-   $ cd cccoin/node/ && pip install -r requirements.txt
-   $ cd frontend/ && npm install && npm run build
-   ```
-  
 5. (Optional) Deploy new instance of the contract:
 
     ```bash
