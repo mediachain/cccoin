@@ -55,36 +55,41 @@ Visit [this web node](http://52.168.175.195) on any regular web browser to get s
 
 Or run your own web node,
 
-1. Setup a [Geth](https://ethereum.github.io/go-ethereum/downloads/), [Parity](https://ethcore.io/parity.html), or [Test-RPC](https://github.com/ethereumjs/testrpc) Ethereum node, and configure its settings in `truffle.js`. Setup and connection details for Geth 1.5.2 can be found [here](https://gist.github.com/parkan/5b99978279b5c58ca0fdff0c18ed6d88).
-
+1. Setup either [Geth](https://ethereum.github.io/go-ethereum/downloads/), [Parity](https://ethcore.io/parity.html), or [Test-RPC](https://github.com/ethereumjs/testrpc). Configure its settings in `truffle.js`. Settings for connecting to the CCCoin network with Geth 1.5.2 can be found [here](https://gist.github.com/parkan/5b99978279b5c58ca0fdff0c18ed6d88).
 
 2. Launch your Ethereum node. Refer to the setup instructions for your chosen variant:
    
    ```bash
-   testrpc -p 9999 --gasLimit 0xFFFFFFFFF --gasPrice 1
+   $ testrpc -p 9999 --gasLimit 0xFFFFFFFFF --gasPrice 1
    ```
 
-3. Build frontend:
+3. Clone:
+   ```bash
+   $ git clone https://github.com/mediachainlabs/cccoin.git
+   ```
+
+4. Install dependencies:
+   ```bash
+   $ cd cccoin/node/ && pip install -r requirements.txt
+   $ cd frontend/ && npm install && npm run build
+   ```
+  
+5. (Optional) Deploy new instance of the contract:
 
     ```bash
-    $ cd node/frontend/ && npm install && npm run build
+    $ cd cccoin/ && truffle migrate --verbose-rpc
     ```
-4. (Optional) Deploy new instance of the contract:
+
+6. Or, Paste address of the deployed contract into file:
 
     ```bash
-    $ truffle migrate --verbose-rpc
+    $ echo "CONTRACT_ADDRESS_HERE" > cccoin/node/build_contracts/cccoin_contract_address.txt
     ```
 
-5. Or, Paste address of the deployed contract into file:
+7. Launch your own web node:
 
     ```bash
-    $ echo "CONTRACT_ADDRESS_HERE" > node/build_contracts/cccoin_contract_address.txt
-    ```
-
-6. Launch your own web node:
-
-    ```bash
-    $ cd node/ && pip install -r requirements.tx && python node_main.py start_web
+    $ cd cccoin/node/ && python node_main.py start_web
     ```
 
 ## Status
