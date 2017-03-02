@@ -34,7 +34,7 @@ CORE_SETTINGS = {'REWARDS_CURATION':90.0,     ## Voting rewards
 
 ## Number of blocks to wait before advancing to each new state:
 
-DEFAULT_CONFIRM_STATES = {'PENDING':0,
+DEFAULT_CONFIRM_STATES = {'BLOCKCHAIN_PENDING':0,
                           'BLOCKCHAIN_CONFIRMED':15,
                           }
 ##
@@ -463,6 +463,8 @@ def start_web(via_cli = False):
                         settings_rewards = CORE_SETTINGS,
                         mode = 'web',
                         ) 
+    
+    cw.start_contract_thread()
     
     inner_start_web(cccoin)
     

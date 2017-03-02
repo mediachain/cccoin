@@ -5,6 +5,7 @@ from node_mc import MediachainQueue
 
 import bitcoin as btc
 import ethereum.utils ## Slow...
+import ethereum.abi
 import struct
 import binascii
 import json
@@ -72,6 +73,7 @@ def solidity_string_encode(ss):
         rr += ('\x00' * (rem))
     rr = '0x' + binascii.hexlify(rr)
     return rr
+
 
 class SharedCounter(object):
     def __init__(self, n=0):
@@ -180,6 +182,11 @@ def client_create_blind(inner,
     
     return r_blind, r_unblind
 
+
+def event_sig_to_topic_id(sig):
+    name = sig[:sig.find('(')]
+    types = [x.strip().split()[0] for x in sig[sig.find('(')+1:sig.find(')')].split(',')]
+    return ethereum.utils.int_to_hex(ethereum.abi.event_id(name,types))
 
 class CCCoinCore:
     
@@ -379,19 +386,7 @@ class CCCoinCore:
                 assert False, action
         
         self.cw.loop_once()        
-
-
-    def cache_unblind(self, creator_pub, payload_decoded, received_via):
-        """
-        Cache actions in local indexes.
-        
-        Accepts messages from any of:
-        1) New from Web API
-        2) New Blockchain
-        3) Old from Blockchain that were previously seen via Web API.
-        """
     
-
     def process_lockup(self,
                        block_num,
                        recipient,
@@ -406,10 +401,12 @@ class CCCoinCore:
         ## Update minimal LOCK at each block:
         
         self.confirmed_min_lock_per_user.store(recipient,
-                                               min(final_lock, self.confirmed_min_lock_per_user.lookup(recipient,
-                                                                                                       end_block = block_num,
-                                                                                                       default = maxint,
-                                                                                                       )),
+                                               min(final_lock,
+                                                   self.confirmed_min_lock_per_user.lookup(recipient,
+                                                                                           end_block = block_num,
+                                                                                           default = maxint,
+                                                                                           )[0],
+                                                   ),
                                                block_num,
                                                )
     
@@ -433,21 +430,52 @@ class CCCoinCore:
         event MintEvent(uint reward_tok, uint reward_lock, address recipient, uint block_num, uint rewards_freq, uint tot_tok, uint tot_lock, uint current_tok, uint current_lock, uint minted_tok, uint minted_lock);
         """
         self.confirmed_paid_rewards_lock.store(user_id,
-                                               max(minted_lock, self.confirmed_paid_rewards_lock.lookup(user_id,
-                                                                                                        end_block = doing_block_num,
-                                                                                                        default = 0,
-                                                                                                        )),
+                                               max(minted_lock,
+                                                   self.confirmed_paid_rewards_lock.lookup(user_id,
+                                                                                           end_block = doing_block_num,
+                                                                                           default = 0,
+                                                                                           )[0],
+                                                   ),
                                                block_num,
                                                )
-
-        
-    def process_event(self,
-                      msg,
-                      received_via,
-                      receipt = False,
-                      do_verify = True,
-                      ):
+    
+    def process_event(self, msg, *args, **kw):
         """
+        Proxy event to appropriate handler based on topic id.
+        """
+
+        if 'topics' not in msg:
+            return self.process_thelog(msg, *args, **kw)
+            
+        
+        if msg['topics']:
+            assert len(msg['topics']) == 1, msg['topics']
+
+        if msg['topics'][0] == '0x27de6db42843ccfcf83809e5a91302efd147c7514e1f7566b5da6075ad2ef4df':
+            ## event_sig_to_topic_id('TheLog(bytes)')
+            return self.process_thelog(msg, *args, **kw)
+        
+        elif msg['topics'][0] == '0x1f9e803538b221c54457d8f3287da41cc1cf9a49bfd8b838d15c3d86c3f4a704':
+            ## event_sig_to_topic_id('MintEvent(uint,uint,address,uint,uint);')
+	    return self.process_mint(msg, *args, **kw)
+            
+        elif msg['topics'][0] == '0xf9066a9b8e7a2ee9afab4894c00a535cc03e07674693fab39a2ba7119e626d0c':
+            ## event_sig_to_topic_id('LockupTokEvent(address recipient, uint amount_tok, uint final_tok, uint final_lock)')
+            return self.process_lockuptok(msg, *args, **kw)
+        else:
+            assert False, ('UNKNOWN_TOPICS', msg['topics'])
+                 
+        
+    def process_thelog(self,
+                       msg,
+                       received_via,
+                       receipt = False,
+                       do_verify = True,
+                       ):
+        """
+        ethereum.utils.int_to_hex(event_id('TheLog',['bytes']))
+        = 
+        
         - Update internal state based on new messages.
         - Compute rewards for confirmed blocks, every N hours.
            + Distribute rewards if synced to latest block.
@@ -594,8 +622,12 @@ class CCCoinCore:
                     
                     
             print ('PAYLOAD_INNER:', payload_inner)
-            
-            if payload_decoded['item_type'] == 'posts':
+
+            if payload_decoded['item_type'] == 'username':
+                
+                payload_inner['username']
+
+            elif payload_decoded['item_type'] == 'posts':
                 
                 print ('====COMMAND_UNBLIND_POSTS:', payload_inner)
                 
@@ -665,7 +697,7 @@ class CCCoinCore:
                                                                                           start_block = msg['blockNumber'],
                                                                                           end_block = msg['blockNumber'],
                                                                                           default = set(),
-                                                                                          )
+                                                                                          )[0]
 
                         if vote['direction'] in [-1, -2]:
                             try:
@@ -777,7 +809,7 @@ class CCCoinCore:
                         voter_lock = self.confirmed_min_lock_per_user.lookup(voter_id,
                                                                              end_block = doing_block_num - 1, ## Minus 1 for safety.
                                                                              default = (voter_id in self.genesis_users and 1.0 or 0.0),
-                                                                             )
+                                                                             )[0]
                         voter_lock_cache[voter_id] = voter_lock
                         total_lock += voter_lock
                     
@@ -810,7 +842,7 @@ class CCCoinCore:
                         old_voters[item_id] = self.confirmed_post_voters[1].lookup(item_id,
                                                                                    start_block = doing_block_num - 1,
                                                                                    end_block = doing_block_num - 1,
-                                                                                   )                
+                                                                                   )[0]
                     except KeyError:
                         pass
                     
@@ -820,7 +852,7 @@ class CCCoinCore:
                     post = self.confirmed_posts.lookup(item_id,
                                                        end_block = doing_block_num,
                                                        default = False,
-                                                       )
+                                                       )[0]
                     if post is False:
                         ## TODO -
                         ## We got a vote for a post that's not yet fully confirmed...
@@ -852,7 +884,7 @@ class CCCoinCore:
 
                         ## Sponsor rewards for curation:
 
-                        post = self.confirmed_posts.lookup(item_id, end_block = doing_block_num)
+                        post = self.confirmed_posts.lookup(item_id, end_block = doing_block_num)[0]
                         if 'sponsor' in post:
                             new_rewards_curator[post['sponsor']] += xrw
 
@@ -881,7 +913,7 @@ class CCCoinCore:
                                                                  reward + self.confirmed_earned_rewards_lock.lookup(user_id,
                                                                                                                     end_block = doing_block_num,
                                                                                                                     default = 0,
-                                                                                                                    ),
+                                                                                                                    )[0],
                                                                  doing_block_num,
                                                                  )
 
@@ -913,7 +945,7 @@ class CCCoinCore:
                         paid_lock = self.confirmed_paid_rewards_lock.lookup(user_id,
                                                                             end_block = old_rewards_block_num,
                                                                             default = 0.0,
-                                                                            )
+                                                                            )[0]
                         
                         net_earned += float(max(0.0, earned_lock - paid_lock))
                     

@@ -46,7 +46,7 @@ function do_vote(item_id, direction){
   }
   const {posting_priv, posting_pub} = keys;
 
-  const my_pow = 1.23;
+  const my_pow = 0.0;
   console.log('do_vote', item_id, direction, my_pow);
   let direction_out = update_card_for_vote(item_id, direction, my_pow);
 

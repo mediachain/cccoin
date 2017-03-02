@@ -73,7 +73,7 @@ module.exports = exports = {
     }
   },
 
-  update_card_for_vote (postId, vote_direction, pow) {
+    update_card_for_vote (postId, vote_direction, pow) {
     const $upvoteButton = $(`#vote_${postId}_1`);
     const $downvoteButton = $(`#vote_${postId}_-1`);
     const $flagButton = $(`#vote_${postId}_2`);
@@ -82,7 +82,7 @@ module.exports = exports = {
 
     if ($upvoteButton.length === 0 || $downvoteButton.length === 0 ||
         $flagButton.length === 0 || $powSpan.length === 0) {
-      console.warn(`Couldn't get UI elements for ${postId}, bailing out.`);
+      console.warn("Couldn't get UI elements for " + postId + ", bailing out.");
       return;
     }
 
@@ -138,6 +138,7 @@ module.exports = exports = {
   },
 
   update_card_timestamps () {
+    return;
     if (document.hidden) return;
 
     $('.card-time-ago').each(function () {
@@ -164,6 +165,7 @@ module.exports = exports = {
   },
 
   money_update() {
+    return;
     if (!document.hidden){
       $('.card-money-outer').each(function (index, value) {
         if (Math.random() < 0.1){

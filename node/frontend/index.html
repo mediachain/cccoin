@@ -135,9 +135,9 @@
 		.vote-button.inactive { background-color: #ffffff; !important; }
 
 
+		.material-icons.active { color: #ee6e73 !important; }
 		.flag-button.active { color: #ffeb3b !important; }
 		.flag-button.inactive {  color: #eeeeee !important; }
-		.material-icons.active { color: #ee6e73 !important; }
 		[type="checkbox"]:checked+label:before {border-right: 2px solid #ee6e73 !important; border-bottom: 2px solid #ee6e73 !important;}
 		
 		#main_nav.fixednav{position:fixed !important;z-index:10;background:#fff !important;top:0;left:0;right:0;}
@@ -279,11 +279,11 @@
 								<div class="row" style="margin:0;">
 									<div class="card-creator-text">
 										<a href="/?user={{ the_item['status']['creator_address'] }}" class="red-text text-accent-4">{{ the_item['status']['creator_address'][:6] }}</a>
-										<span class="card-time-ago grey-text" data-time-created="{{ the_item['status']['created_time'] }}"></span>
+										<span class="card-time-ago grey-text" data-time-created="{{ the_item['status']['created_time'] }}">{{ htime_ago(the_item['status']['created_time']) }}</span>
 									</div>
 									<div>
 			<span class="card-money-outer">
-			  $<span id="vote_{{ the_item['post_id'] }}_pow">{{ 0 }}.{{ '%02d' % 1 }}</span>
+			  <span id="vote_{{ the_item['post_id'] }}_pow">{{ 0 }}.{{ '%02d' % 1 }}</span> CCC
 			  <i class="trend-up material-icons red-text text-lighten-1" style="font-size:15px;display:none;">arrow_upward</i>
 			  <i class="trend-down material-icons blue-text text-lighten-1" style="font-size:15px;display:none;">arrow_downward</i>
 			</span>

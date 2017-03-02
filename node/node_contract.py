@@ -10,6 +10,16 @@ from time import sleep
 DEFAULT_RPC_HOST = '127.0.0.1'
 DEFAULT_RPC_PORT = 9999
 
+def fixed_int_to_hex(vv):
+    rr = ethereum.utils.int_to_hex(vv)
+    if rr == '0x':
+        rr = '0x0'
+    return rr
+
+from threading import current_thread,Thread
+from Queue import Queue
+from time import sleep
+
 class ContractWrapper:
     
     def __init__(self,
@@ -18,29 +28,43 @@ class ContractWrapper:
                  the_args = None,
                  the_address = False,
                  events_callback = False,
+                 deploy_callback = False,
+                 blocking_sleep_time = 0.1,
                  rpc_host = DEFAULT_RPC_HOST,
                  rpc_port = DEFAULT_RPC_PORT,
                  settings_confirm_states = {},
-                 final_confirm_state = 'BLOCKCHAIN_CONFIRMED',
                  contract_address = False,
                  start_at_current_block = False,
                  auto_deploy = True,
+                 contract_thread_sleep_time = 1.0,
                  ):
         """
         Simple contract wrapper, assists with deploying contract, sending transactions, and tracking event logs.
         
         Args:
-        - the_code - solidity code for contract that should be deployed, prior to any operations.
-        - the_address - address of already-deployed main contract.
-        - events_callback - called upon each state transition, according to `confirm_states`, 
-          until `final_confirm_state`.
-        - contract_address contract address, from previous `deploy()` call.
-        - the_sig - optional constructor signature.
-        - the_args - optional constructor args.
+        - the_code: solidity code for contract that should be deployed, prior to any operations.
+        - the_address: address of already-deployed main contract.
+        - contract_address: contract address, from previous `deploy()` call.
+        - the_sig: optional constructor signature.
+        - the_args: optional constructor args.
+        - events_callback: callback for event messages e.g. `TheLog()`, `MintEvent()`, `LockupTokEvent()`, `TransferTokEvent()`.
+        - deploy_callback: callback for contract deploys.
+        - blocking_sleep_time: time to sleep when blocking and polling for a transaction receipt.
         """
 
+        self.c = EthJsonRpc(rpc_host, rpc_port)
+
+        self.contract_thread_sleep_time = contract_thread_sleep_time
+
         self.start_at_current_block = start_at_current_block
+
+        self.current_block_at_init = self.c.eth_blockNumber()
         
+        if self.start_at_current_block:
+            self.latest_done_block = self.current_block_at_init - 1
+        else:
+            self.latest_done_block = 0
+
         self.the_code = the_code
         self.the_sig = the_sig
         self.the_args = the_args
@@ -55,14 +79,13 @@ class ContractWrapper:
         
         self.events_callback = events_callback
 
-        self.c = EthJsonRpc(rpc_host, rpc_port)
-
-        self.current_block_at_init = self.c.eth_blockNumber()
         self.pending_transactions = {}  ## {tx:callback}
         self.pending_logs = {}
         self.latest_block_num = -1
 
         self.latest_block_num_done = 0
+
+        self.send_transaction_queue = Queue()
 
         self.is_deployed = False
         
@@ -82,6 +105,8 @@ class ContractWrapper:
     def deploy(self,
                the_sig = False,
                the_args = False,
+               block = False,
+               callback = False,
                ):
         """ Deploy contract. Optional args_sig and args used to pass arguments to contract constructor."""
 
@@ -106,9 +131,20 @@ class ContractWrapper:
                                              sig = self.the_sig,
                                              args = self.the_args,
                                              )
-        print('CONTRACT DEPLOYED, WAITING FOR CONFIRMATION')
-        wait_for_confirmation(self.c, contract_tx)
 
+        if block:
+            ## NOTE: @yusef feel free to switch back to this method if you want:
+            #print('CONTRACT DEPLOYED, WAITING FOR CONFIRMATION')
+            #wait_for_confirmation(self.c, contract_tx)
+            
+            while True:
+                receipt = self.c.eth_getTransactionReceipt(contract_tx) ## blocks to ensure transaction is mined
+                if receipt:
+                    break
+                sleep(self.blocking_sleep_time)
+        else:
+            self.pending_transactions[contract_tx] = (callback, self.latest_block_num)
+        
         self.contract_address = str(self.c.get_contract_address(contract_tx))
         self.is_deployed = True
         print ('DEPLOYED', self.contract_address)
@@ -116,68 +152,118 @@ class ContractWrapper:
 
     def loop_once(self):
         assert self.is_deployed, 'Must deploy contract first.'
+
+        had_any_events = False
         
         if self.c.eth_syncing():
             print ('BLOCKCHAIN_STILL_SYNCING')
-            return
+            return False
         
         if self.events_callback is not False:
-            self.poll_incoming()
+            had_any_events = self.poll_incoming()
         
-        self.poll_outgoing()
+        had_any_events = self.poll_outgoing() or had_any_events
+
+        num_fails = 0
+        
+        while self.send_transaction_queue.qsize():
+            print ('TRY_TO_SEND')
+            tries, args, kw = self.send_transaction_queue.get()
+            try:
+                self._send_transaction(*args, **kw)
+            except Exception as e:
+                print ('FAILED_TO_SEND', e, tries, args, kw)
+                sleep(1) ## TODO
+                self.send_transaction_queue.put((tries + 1, args, kw))
+                break
+                
+        return had_any_events
         
 
     def poll_incoming(self):
         """
         https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_newfilter
+        
+        1) Create new event filter for each event type we're watching.
+        2) 
         """
         
         assert self.is_deployed, 'Must deploy contract first.'
-        
-        if self.start_at_current_block:
-            start_block = ethereum.utils.int_to_hex(self.current_block_at_init)
-        else:
-            start_block = '0x0' # int_to_hex encodes 0 as '0x' :(
-        
-        self.latest_block_num = self.c.eth_blockNumber()
 
-        for do_state in ['BLOCKCHAIN_CONFIRMED',
-                         #'PENDING',
-                         ]:
+        self.latest_block_num = self.c.eth_blockNumber()
+                
+        for do_state, state_num_blocks in self.confirm_states.items():
             
-            self.latest_block_num_confirmed = max(0, self.latest_block_num - self.confirm_states[do_state])
+            from_block = self.latest_done_block + 1 - state_num_blocks
+            to_block = max(self.latest_done_block, self.latest_block_num) + 1
             
-            from_block = max(1,self.latest_block_num_done)
-            
-            to_block = ethereum.utils.int_to_hex(self.latest_block_num_confirmed)
+            if from_block < 0:
+                continue
+            if from_block < 1:
+                from_block = 1
             
             got_block = 0
             
-            params = {'from_block': start_block,#ethereum.utils.int_to_hex(from_block),#'0x01'
-                      'to_block': to_block,
+            params = {'from_block': fixed_int_to_hex(from_block),
+                      'to_block': 'latest',#fixed_int_to_hex(to_block),
                       'address': self.contract_address,
                       }
             
             print ('eth_newFilter', 'do_state:', do_state, 'latest_block_num:', self.latest_block_num, 'params:', params)
             
-            self.filter = str(self.c.eth_newFilter(**params))
+            self.the_filter = str(self.c.eth_newFilter(**params))
             
-            print ('eth_getFilterChanges', self.filter)
+            print ('eth_getFilterChanges', self.the_filter)
             
-            msgs = self.c.eth_getFilterLogs(self.filter)
+            msgs = self.c.eth_getFilterLogs(self.the_filter)
             
+            if msgs:
+                had_any_events = True
+            else:
+                had_any_events = False
+                
             print ('POLL_INCOMING_GOT', len(msgs))
             
             for msg in msgs:
                 
-                got_block = ethereum.utils.parse_int_or_hex(msg['blockNumber'])
+                self.latest_done_block = max(self.latest_done_block,
+                                             ethereum.utils.parse_int_or_hex(msg['blockNumber']),
+                                             )
                 
                 self.events_callback(msg = msg, receipt = False, received_via = do_state)
 
                 self.latest_block_num_done = max(0, max(self.latest_block_num_done, got_block - 1))
-        
+
+            return had_any_events
+
+    def _start_contract_thread(self,):
+        while True:
+            try:
+                had_any_events = self.loop_once()
+            except Exception as e:
+                print ('LOOP_ONCE_EXCEPTION', e)
+                continue
             
-    def send_transaction(self,
+            if not had_any_events:
+                print ('NO_NEW_EVENTS')
+                sleep(self.contract_thread_sleep_time)
+    
+    def start_contract_thread(self,):
+        """
+        Start ContractWrapper loop_once() in background thread, which (in that thread!) calls back to self.process_event()
+        """
+        self.t = Thread(target = self._start_contract_thread)
+        self.t.daemon = True
+        self.t.start()
+    
+    def send_transaction(self, *args, **kw):
+        assert len(args) <= 2
+        if kw.get('block'):
+            self.send_transaction(*args, **kw)
+        else:
+            self.send_transaction_queue.put((0, args, kw))
+        
+    def _send_transaction(self,
                          args_sig,
                          args,
                          callback = False,
@@ -228,7 +314,11 @@ class ContractWrapper:
                                         )
         
         if block:
-            receipt = self.c.eth_getTransactionReceipt(tx) ## blocks to ensure transaction is mined
+            while True:
+                receipt = self.c.eth_getTransactionReceipt(tx) ## blocks to ensure transaction is mined
+                if receipt:
+                    break
+                sleep(self.blocking_sleep_time)
             #print ('GOT_RECEIPT', receipt)
             #if receipt['blockNumber']:
             #    self.latest_block_num = max(ethereum.utils.parse_int_or_hex(receipt['blockNumber']), self.latest_block_num)
@@ -246,8 +336,12 @@ class ContractWrapper:
 
         assert self.is_deployed, 'Must deploy contract first.'
 
+        had_any_events = False
+        if self.pending_transactions:
+            had_any_events = True
+        
         for tx, (callback, attempt_block_num) in self.pending_transactions.items():
-
+            
             ## Compare against the block_number where it attempted to be included:
             
             if (attempt_block_num <= self.latest_block_num - self.confirm_states['BLOCKCHAIN_CONFIRMED']):
@@ -267,6 +361,8 @@ class ContractWrapper:
                 if callback is not False:
                     callback(receipt)
                 del self.pending_transactions[tx]
+
+        return had_any_events
     
     def read_transaction(self, args_sig, value):
         rr = self.c.call(self.c.eth_coinbase(), self.contract_address, args_sig, value)

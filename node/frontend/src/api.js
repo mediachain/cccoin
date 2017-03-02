@@ -115,19 +115,19 @@ module.exports = exports = {
       })
 
       request2.done(function (msg) {
-        console.log('blind_something.request2.done()');
+        console.log('blind_something.request2.done() ' + item_type);
 
         if (item_type == 'posts') {
           //creator_addr = ethUtils.pubToAddress(new Buffer(posting_pub, 'hex')).toString('hex');
-
+	  
           const creator_addr = posting_pub.slice(0, 20);
-
+	  
           window.location.href = '/?user=' + creator_addr + '&sort=new'; // TODO - ajax refresh listing?
 
-          console.log('DONE unblind item_type ' + item_type);
-
-          callback();
         }
+	  callback();
+          console.log('DONE unblind item_type ' + item_type);
+	  
       });
 
       request2.fail(function (jqXHR, textStatus, error_thrown) {

@@ -4,6 +4,9 @@ const ethUtils = require('ethereumjs-util');
 const SESSION_DATA_KEY = 'session_data';
 const AUTH_COOKIE_KEY = 'auth';
 
+const { get_nonce, sign_string, sig_to_json, weak_random } = require('./util');
+const { blind_something } = require('./api');
+
 /**
  * @module auth
  * @description Authorization, login / logout, session persistence, etc.
@@ -162,6 +165,7 @@ module.exports = exports = {
    * @param the_callback
    */
   login(password, requested_username, the_callback){
+      console.log('finish()', password, requested_username);
 
     if (typeof requested_username === 'undefined'){
       requested_username = "";
@@ -172,9 +176,31 @@ module.exports = exports = {
       the_callback = () => {};
     }
 
-    console.log('login()', password, requested_username);
-
-    // TODO: check with server that this user exists.
+      if (requested_username){
+	  // Request username:
+	  
+	  const {publicKey: posting_pub, privateKey: posting_priv} = exports.gen_key('posting', password);
+	  
+	  const un_string = JSON.stringify({
+	      username: requested_username,
+	      rand: weak_random(16), // Mitigate replay detection attacks.
+	  });
+	  
+	  blind_something(un_string,
+			  1,
+			  'username',
+			  posting_priv,
+			  posting_pub,
+			  function(){exports.login_finish(password, requested_username, the_callback)}
+			 );
+      }
+      else {
+	  exports.login_finish(password, requested_username, the_callback);
+      }
+      
+  },
+    login_finish(password, requested_username, the_callback){
+	console.log('login_finish()', password, requested_username);
 
     const {address: owner_addr} = exports.gen_key('owner', password);
     const {publicKey: posting_pub, privateKey: posting_priv} = exports.gen_key('posting', password);
@@ -200,7 +226,7 @@ module.exports = exports = {
       method: "POST",
       data: JSON.stringify({the_pub: posting_pub})
     });
-
+      
     request1.done(function( hh ) {
       console.log('login.request1.done()');
 
@@ -270,5 +296,5 @@ module.exports = exports = {
         "message":'Connection fail: login.request1.fail()',
       });
     });
-  }
+    }
 }
