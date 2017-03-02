@@ -8,6 +8,8 @@
 
 - **Rewards users** for submitting images.
 - **Rewards voters** for curating images.
+- **Rewards servers** for contributing website hosting.
+- **Rewards sponsors** for sponsoring gas fees.
 - **No downloads** runs instantly in any web browser.
 - **Zero fees** for regular users, not micro-tipping.
 - **ERC20 standard** token rewards.
@@ -87,7 +89,7 @@ Or run your own web node,
 
 ## Status
 
-- **Planned:** Reward nodes vote on rewards with M of N consensus required. Voting used to elect rewards nodes.
+- **Planned:** Rewards Nodes vote on rewards, with M of N consensus required. Voting elects rewards nodes.
 - **Planned:** Streamlining of web node financier process.
 - **Planned:** More comprehensive in-browser light wallet functionality.
 
