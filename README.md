@@ -6,13 +6,13 @@
 
 [Try CCCoin here!](http://52.168.175.195)
 
-- **Rewards users** for submitting images.
-- **Rewards voters** for curating images.
-- **Rewards servers** for contributing website hosting.
-- **Rewards sponsors** for sponsoring gas fees.
-- **No downloads** runs instantly in any web browser.
-- **Zero fees** for regular users, not micro-tipping.
-- **ERC20 standard** token rewards.
+|          |             | 
+| ------------- | :------------- | 
+| **Rewards users** for submitting images.      | **Rewards voters** for curating images. | 
+| **Rewards servers** for contributing website hosting.      | **Rewards sponsors** for sponsoring gas fees.      | 
+| **No downloads** runs instantly in any web browser. | **Zero fees** for regular users, not micro-tipping.      | 
+| **ERC20 standard** token rewards. | **Rewards commitment** with staking interest. |
+
 
 ## Technologies
 
