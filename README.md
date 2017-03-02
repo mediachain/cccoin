@@ -2,55 +2,25 @@
 
 **CCCoin** - Image creation, curation, and sharing incentivization network.
 
-## Why
+## Intro
 
-- **Pays you** for positive contributions.
-- **No downloads** runs instantly in web browser.
+[Try CCCoin here](http://52.168.175.195)!
+
+- **Rewards users** for submitting images.
+- **Rewards voters** for curating images.
+- **No downloads** runs instantly in any web browser.
 - **Zero fees** for regular users, not micro-tipping.
-- **ERC20 standard** token compatibility.
+- **ERC20 standard** token rewards.
 
-## Run
+## Technologies
 
-Any regular web browser can instantly and safely use CCCoin just by going to the URL of anyone running a `web node`. Or, follow the instructions below to run your own private `web node`.
+- **Mediachain** - Metadata storage, metadata search, and metadata organization.
+- **Ethereum** - ERC20 for the token and blockchain for resolving concurrency conflicts into a single universal ordering.
+- **CCCoin Core** - Custom blockchain consensus and incentives mechanisms that build upon the above foundations.
 
-Setup a [Geth](https://ethereum.github.io/go-ethereum/downloads/), [Parity](https://ethcore.io/parity.html), or [Test-RPC](https://github.com/ethereumjs/testrpc) Ethereum node, and configure its settings in `truffle.js`.
+## Blockchain Rewards in Depth
 
-Instructions for setting up a private testnet with geth (current for 1.5.2) can be found [here](https://gist.github.com/parkan/5b99978279b5c58ca0fdff0c18ed6d88).
-
-Then,
-
-1. Launch your Ethereum node. Refer to the setup instructions for your chosen variant:
-   
-   ```bash
-   testrpc -p 9999 --gasLimit 0xFFFFFFFFF --gasPrice 1
-   ```
-
-2. Build frontend:
-
-    ```bash
-    $ cd node/frontend/ && npm install && npm run build
-    ```
-3. (Optional) Deploy new instance of the contract:
-
-    ```bash
-    $ truffle migrate --verbose-rpc
-    ```
-
-4. Or, Paste address of the deployed contract into file:
-
-    ```bash
-    $ echo "CONTRACT_ADDRESS_HERE" > node/build_contracts/cccoin_contract_address.txt
-    ```
-
-5. Launch your own web node:
-
-    ```bash
-    $ cd node/ && pip install -r requirements.tx && python node_main.py start_web
-    ```
-
-## Incentives
-
-CCCoin has a rich incentives ecosystem that rewards users for a wide variety of contributions,
+CCCoin's blockchain, layered above the Ethereum blockchain, mints rewards for wide variety of contributions,
 
 1. **Submit your images** - Submit images that get sufficient votes, and you earn tokens. Submit images that don't get sufficient votes, you start to lose visibility for your newly submitted images.
 2. **Vote on images** - Vote on images that receive sufficient subsequent votes after your vote, and you earn tokens. Vote on images that don't receive sufficient subsequent votes, you start to lose voting power.
@@ -60,7 +30,7 @@ CCCoin has a rich incentives ecosystem that rewards users for a wide variety of 
 6. **Buy the CCCoin token** - Fund the advancement of the entire CCCoin ecosystem of resource providers by supporting the price of CCCoin. Feel the rewards of knowing you're contributing to creative good!
 7. **Loan CCCoin your tokens** - Commit to locking up your CCCoin tokens on the platform for a period of time, in the form of CCLock, and you'll receive interest bearing CCCoin payments back over time. Redeem too much of your CCLock too soon, and face an early withdrawal penalty.
 
-## Properties
+## Properties in Depth
 
 CCCoin has all of the stadard properties you expect from a dApp,
 
@@ -72,18 +42,56 @@ CCCoin has all of the stadard properties you expect from a dApp,
 
 *Distributed - hiring a thousand guards to protect you with the hope that more is simply better. Trustless - ensuring there's always geater monetary benefit to your guards for them to protect you, rather than to accept bribes to harm you.*
 
-## Tokens
+## Token Types
 
 - **CCCoin (CCC)** - The currency of the CCCoin network. It is a ERC20 standard token that can be freely used independently of the CCCoin network.
 - **CCLock (CCL)** - Virtual token of CCCoin that represents locked-up CCC, and can only be slowly disbursed back to its owners over many months in the form of CCC interest bearing payments. Meant to incentivize long-term good behavior by certain participants, in addition to rewarding those wanting to make a long term financial commitment to CCCoin.
 
-## Technologies
 
-- **Mediachain** - Metadata storage, metadata search, and metadata organization.
-- **Ethereum** - ERC20 for the token and blockchain for resolving concurrency conflicts into a single universal ordering.
-- **CCCoin Core** - Custom blockchain consensus and incentives mechanisms that build upon the above foundations.
+## Running
+
+Visit [this web node](http://52.168.175.195) on any regular web browser to get started right away!
+
+Follow the directions below to run your own `web node`.
+
+1. Setup a [Geth](https://ethereum.github.io/go-ethereum/downloads/), [Parity](https://ethcore.io/parity.html), or [Test-RPC](https://github.com/ethereumjs/testrpc) Ethereum node, and configure its settings in `truffle.js`. Setup and connection details for Geth 1.5.2 can be found [here](https://gist.github.com/parkan/5b99978279b5c58ca0fdff0c18ed6d88).
+
+
+2. Launch your Ethereum node. Refer to the setup instructions for your chosen variant:
+   
+   ```bash
+   testrpc -p 9999 --gasLimit 0xFFFFFFFFF --gasPrice 1
+   ```
+
+3. Build frontend:
+
+    ```bash
+    $ cd node/frontend/ && npm install && npm run build
+    ```
+4. (Optional) Deploy new instance of the contract:
+
+    ```bash
+    $ truffle migrate --verbose-rpc
+    ```
+
+5. Or, Paste address of the deployed contract into file:
+
+    ```bash
+    $ echo "CONTRACT_ADDRESS_HERE" > node/build_contracts/cccoin_contract_address.txt
+    ```
+
+6. Launch your own web node:
+
+    ```bash
+    $ cd node/ && pip install -r requirements.tx && python node_main.py start_web
+    ```
 
 ## Status
 
-Future plans include evolving from a single rewards node operating at a time, which can be fired and replaced at any time via a hard fork performed by the users of the network if they collectively choose to do so, toward a softer hiring and firing mechanism which will instead allow users to continually vote to elect a consortium of operators for rewards nodes. Further streamlining third party funding of web nodes is also planned.
+- **Planned:** Reward nodes vote on rewards with M of N consensus required. Voting used to elect rewards nodes.
+- **Planned:** Streamlining of web node financier process.
+- **Planned:** More comprehensive in-browser light wallet functionality.
 
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
