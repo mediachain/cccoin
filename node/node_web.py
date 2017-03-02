@@ -482,12 +482,13 @@ class BaseHandler(tornado.web.RequestHandler):
         self.write(r)
         self.finish()
 
-    def get_image_proxy(self, width, height, url):
+    def get_image_proxy(self, url, width = '-', height = '-'):
         if not self.application.image_proxy_path:
             rr = url
         else:
-            #rr urlencode({'w':width,'h':height,'u':url})
-            rr = self.application.image_proxy_path + str(width) + '/' + str(height) + '/' + url
+            #rr = urlencode({'w':width,'h':height,'u':url})
+            #rr = self.application.image_proxy_path + str(width) + '/' + str(height) + '/' + url
+            rr = self.application.image_proxy_path + 'h/' + str(height) + '/' + url
         return rr
         
     def write_json(self,
