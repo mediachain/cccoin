@@ -69,25 +69,21 @@ Or run your own web node,
    $ sudo npm install -g git+https://github.com/ethereumjs/testrpc # OPTIONAL
    ```
 
-4. Launch your Ethereum node. Refer to the setup instructions for your chosen variant:
+4. Launch your Ethereum node. Refer to the instructions for your chosen variant from step #1:
    
    ```bash
    $ testrpc -p 9999 --gasLimit 0xFFFFFFFFF --gasPrice 1
    ```
 
-5. (Optional) Deploy new instance of the contract:
+5. Either deploy new instance of the contract, or record the address of an already deployed contract:
 
     ```bash
     $ cd cccoin/ && truffle migrate --verbose-rpc
-    ```
-
-6. Or, Paste address of the deployed contract into file:
-
-    ```bash
+    # OR:
     $ echo "CONTRACT_ADDRESS_HERE" > cccoin/node/build_contracts/cccoin_contract_address.txt
     ```
 
-7. Launch your own web node:
+6. Launch your own web node:
 
     ```bash
     $ cd cccoin/node/ && python node_main.py start_web
