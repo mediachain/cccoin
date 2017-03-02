@@ -6,7 +6,7 @@
 
 TEST_MODE = False
 
-IMAGE_PROXY_PATH = '/resized/' ## See cccoin/docs/nginx_config to setup, or set to False to disable.
+IMAGE_PROXY_PATH = '/images/' ## See cccoin/docs/nginx_config to setup, or set to False to disable.
 
 DATA_DIR = 'build_contracts/'
 
