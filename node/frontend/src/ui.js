@@ -310,7 +310,7 @@ module.exports = exports = {
          //alert("Ready");
         //console.log(modal, trigger);
         $('#login_form_tabs').tabs('select_tab', 'signup');
-        $("#login_password").focus();
+        $("#signup_password").focus();
       },
       complete: function() {
         //
