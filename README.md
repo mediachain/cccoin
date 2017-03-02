@@ -4,7 +4,7 @@
 
 ## Intro
 
-[Try CCCoin here](http://52.168.175.195)!
+[Try CCCoin here!](http://52.168.175.195)
 
 - **Rewards users** for submitting images.
 - **Rewards voters** for curating images.
@@ -32,7 +32,7 @@ CCCoin's blockchain, layered above the Ethereum blockchain, mints rewards for wi
 
 ## Properties in Depth
 
-CCCoin has all of the stadard properties you expect from a dApp,
+CCCoin aims to achieve all of the properties expected from a dApp,
 
 - **Trustless** - meritocratic incentives system allowing bad actors to be automatically replaced by good actors.
 - **Permissionless** - anyone can contribute without permission, by submitting directly to the blockchain, though those who make negative contributions will likely face penalties.
@@ -40,7 +40,6 @@ CCCoin has all of the stadard properties you expect from a dApp,
 - **Fault tolerant** - resource providers that disappear or go rogue can be replaced in a meritocratic, permissionless, automated way.
 - **Distributed Computation**, **Distributed Control**, **Decentralized Control** - See trustlessness and fault tolerance.
 
-*Distributed - hiring a thousand guards to protect you with the hope that more is simply better. Trustless - ensuring there's always geater monetary benefit to your guards for them to protect you, rather than to accept bribes to harm you.*
 
 ## Token Types
 
@@ -48,11 +47,11 @@ CCCoin has all of the stadard properties you expect from a dApp,
 - **CCLock (CCL)** - Virtual token of CCCoin that represents locked-up CCC, and can only be slowly disbursed back to its owners over many months in the form of CCC interest bearing payments. Meant to incentivize long-term good behavior by certain participants, in addition to rewarding those wanting to make a long term financial commitment to CCCoin.
 
 
-## Running
+## Getting Started
 
 Visit [this web node](http://52.168.175.195) on any regular web browser to get started right away!
 
-Follow the directions below to run your own `web node`.
+Or run your own web node,
 
 1. Setup a [Geth](https://ethereum.github.io/go-ethereum/downloads/), [Parity](https://ethcore.io/parity.html), or [Test-RPC](https://github.com/ethereumjs/testrpc) Ethereum node, and configure its settings in `truffle.js`. Setup and connection details for Geth 1.5.2 can be found [here](https://gist.github.com/parkan/5b99978279b5c58ca0fdff0c18ed6d88).
 
