@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 """
+Temporal chain database, and chain fork consensus.
+
 TODO - Also create version with SQL backend.
 """
 

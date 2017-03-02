@@ -252,7 +252,7 @@
 							<div class="card-image">
 								<img class="materialboxed"
 									 data-caption="{{ the_item['image_title'].replace('\n',' ').replace('\r',' ')[:256] }}"
-									 src="{{ the_item['image_url'] }}"
+									 src="{{ handler.get_image_proxy('-', 1024, the_item['image_url']) }}"
 								>
 								<span class="card-title">{{ the_item['image_title'] }}</span>
 							</div>

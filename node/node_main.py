@@ -6,6 +6,8 @@
 
 TEST_MODE = False
 
+IMAGE_PROXY_PATH = '/images/' ## See cccoin/docs/nginx_config to setup, or set to False to disable.
+
 DATA_DIR = 'build_contracts/'
 
 DEPLOY_WITH_TRUFFLE = True
@@ -466,7 +468,9 @@ def start_web(via_cli = False):
     
     cw.start_contract_thread()
     
-    inner_start_web(cccoin)
+    inner_start_web(cccoin,
+                    image_proxy_path = IMAGE_PROXY_PATH,
+                    )
     
     
 def start_rewards():

@@ -169,10 +169,9 @@ import urlparse
 
 
 from uuid import uuid4
-
 from ujson import loads,dumps
 from time import time
-
+from urllib import urlencode
 
 class AuthState:
     def __init__(self):
@@ -383,9 +382,11 @@ check_auth = check_auth_asymmetric
 class Application(tornado.web.Application):
     def __init__(self,
                  cccoin,
+                 image_proxy_path,
                  ):
 
         self.the_cccoin = cccoin
+        self.image_proxy_path = image_proxy_path
         
         handlers = [(r'/',handle_front,),
                     (r'/demo',handle_front,),
@@ -462,6 +463,7 @@ class BaseHandler(tornado.web.RequestHandler):
         kwargs['all_dbs'] = self.cccoin.DBL['all_dbs']
         kwargs['time'] = time
         kwargs['htime_ago'] = htime_ago
+        kwargs['urlencode'] = urlencode
         
         r = self.loader.load(template_name).generate(**kwargs)
         
@@ -479,6 +481,14 @@ class BaseHandler(tornado.web.RequestHandler):
         r=t.generate(**kwargs)
         self.write(r)
         self.finish()
+
+    def get_image_proxy(self, width, height, url):
+        if not self.application.image_proxy_path:
+            rr = url
+        else:
+            #rr urlencode({'w':width,'h':height,'u':url})
+            rr = self.application.image_proxy_path + str(width) + '/' + str(height) + '/' + url
+        return rr
         
     def write_json(self,
                    hh,
@@ -749,14 +759,15 @@ class handle_track(BaseHandler):
         
 
 def inner_start_web(cccoin,
+                    image_proxy_path = False,
                     port = 50000,
                     ):
     
-    print ('BINDING',port)
+    print ('BINDING', port)
     
     try:
         tornado.options.parse_command_line()
-        http_server = HTTPServer(Application(cccoin),
+        http_server = HTTPServer(Application(cccoin, image_proxy_path),
                                  xheaders=True,
                                  )
         http_server.bind(port)
