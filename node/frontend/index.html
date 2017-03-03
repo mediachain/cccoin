@@ -304,7 +304,9 @@
 									</div>
 									<div>
 			<span class="card-money-outer">
-			  <span id="vote_{{ the_item['post_id'] }}_pow">{{ '%.2f' % (handler.cccoin.tdb.lookup('scores',T_ANY_FORK,session['pub'] + '|' + the_item['post_id'],default = 0)[0]) }}</span> CCC
+			  <span id="vote_{{ the_item['post_id'] }}_pow">
+			    {{ '%.2f' % (handler.cccoin.tdb.lookup('scores',T_ANY_FORK, the_item['status']['creator_pub'] + '|' + the_item['post_id'],default = 0)[0]) }}
+			  </span> CCC
 			  {% comment handler.cccoin.cw.block_details.get(the_item['status']['created_block_num']) %}
 			  <i class="trend-up material-icons red-text text-lighten-1" style="font-size:15px;display:none;">arrow_upward</i>
 			  <i class="trend-down material-icons blue-text text-lighten-1" style="font-size:15px;display:none;">arrow_downward</i>

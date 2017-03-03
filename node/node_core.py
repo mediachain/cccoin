@@ -703,7 +703,7 @@ class CCCoinCore:
                         
                         post['status']['confirmed'] = True
                         post['status']['created_block_num'] = msg['blockNumber']
-                        post['status']['created_time'] = self.cw.block_details.get(msg['blockNumber'], {'timestamp':int(time())})['timestamp']
+                        post['status']['created_time'] = self.cw.block_details.get(msg['blockNumber'] - 1, {'timestamp':int(time())})['timestamp']
                         
                         self.tdb.store('posts',
                                        received_via,
