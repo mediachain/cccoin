@@ -52,6 +52,8 @@ class ContractWrapper:
         - blocking_sleep_time: time to sleep when blocking and polling for a transaction receipt.
         """
 
+        self.blocking_sleep_time = blocking_sleep_time
+
         self.c = EthJsonRpc(rpc_host, rpc_port)
 
         self.contract_thread_sleep_time = contract_thread_sleep_time
@@ -140,11 +142,13 @@ class ContractWrapper:
             #print('CONTRACT DEPLOYED, WAITING FOR CONFIRMATION')
             #wait_for_confirmation(self.c, contract_tx)
             
+            print ('BLOCKING FOR RECEIPT..')
             while True:
                 receipt = self.c.eth_getTransactionReceipt(contract_tx) ## blocks to ensure transaction is mined
                 if receipt:
                     break
                 sleep(self.blocking_sleep_time)
+            print ('GOT RECEIPT')
         else:
             self.pending_transactions[contract_tx] = (callback, self.latest_block_num)
         
@@ -317,11 +321,13 @@ class ContractWrapper:
                                         )
         
         if block:
+            print ('BLOCKING FOR RECEIPT..')
             while True:
                 receipt = self.c.eth_getTransactionReceipt(tx) ## blocks to ensure transaction is mined
                 if receipt:
                     break
                 sleep(self.blocking_sleep_time)
+            print ('GOT RECEIPT')
             #print ('GOT_RECEIPT', receipt)
             #if receipt['blockNumber']:
             #    self.latest_block_num = max(ethereum.utils.parse_int_or_hex(receipt['blockNumber']), self.latest_block_num)
