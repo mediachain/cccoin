@@ -22,6 +22,8 @@ import binascii
 
 import bitcoin as btc
 
+from node_temporal import T_ANY_FORK
+
 ##
 #### Utils:
 ##
@@ -464,6 +466,11 @@ class BaseHandler(tornado.web.RequestHandler):
         kwargs['time'] = time
         kwargs['htime_ago'] = htime_ago
         kwargs['urlencode'] = urlencode
+        kwargs['T_ANY_FORK'] = T_ANY_FORK
+
+        #print 'START_STORE'
+        #self.cccoin.tdb.store('user_id_to_username','DIRECT','test','test2')
+        #print 'END_STORE'
         
         r = self.loader.load(template_name).generate(**kwargs)
         
@@ -638,24 +645,41 @@ class handle_login_2(BaseHandler):
         username_success = True
         if hh['requested_username'] and (hh['requested_username'] in self.cccoin.DBL['TAKEN_USERNAMES_DB']):
             username_success = False
-            
-        if hh['requested_username'] and self.cccoin.confirmed_username_to_user_id.lookup(hh['requested_username'],
-                                                                                         default=False,
-                                                                                         ):
+        
+        if hh['requested_username'] and self.cccoin.tdb.lookup('username_to_user_id',
+                                                               T_ANY_FORK,
+                                                               hh['requested_username'],
+                                                               default=False,
+                                                               ):
             username_success = False
 
         ## Check if user already registered a username before:
 
-        uu = self.cccoin.confirmed_user_id_to_username.lookup(the_pub,
-                                                              default = False,
-                                                              )
+        uu = self.cccoin.tdb.lookup('user_id_to_username',
+                                    T_ANY_FORK,
+                                    the_pub,
+                                    default = False,
+                                    )
         
         if uu:
             got_username = hh['requested_username']
             username_success = True
         else:
             got_username = hh['requested_username']
-            
+        
+        self.cccoin.tdb.store('user_id_to_username',
+                              'DIRECT',
+                              the_pub,
+                              hh['requested_username'],
+                              start_block = self.cccoin.cw.c.eth_blockNumber(),
+                              )
+
+        xx = self.cccoin.tdb.lookup('user_id_to_username',
+                                    T_ANY_FORK,
+                                    the_pub,
+                                    )
+        assert xx[0] == hh['requested_username'], xx
+        
         ## Check if previously unseen user ID:
         
         is_new = self.cccoin.DBL['SEEN_USERS_DB'].get(the_pub, False)

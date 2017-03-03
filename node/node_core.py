@@ -334,8 +334,10 @@ class CCCoinCore:
                                              'username_to_user_id',
                                              ],
                               master_fork_name = 'BLOCKCHAIN_CONFIRMED',
-                              fork_names = self.cw.confirm_states.keys(),
+                              fork_names = self.cw.confirm_states.keys() + ['DIRECT'],
                               )
+
+        self.tdb.all_update_latest_master_block_num(self.cw.c.eth_blockNumber())
     
     def test_feed_round(self, actions):
         """
@@ -539,6 +541,7 @@ class CCCoinCore:
             payload_decoded = loads_compact(msg['payload'])
             msg_data = msg
             msg = {'data':msg}
+            msg['blockNumber'] = self.cw.c.eth_blockNumber()
             
         elif received_via in ['BLOCKCHAIN_CONFIRMED', 'BLOCKCHAIN_PENDING']:
             
@@ -601,8 +604,10 @@ class CCCoinCore:
             creator_pub = msg_data['pub']
             
             #creator_address = btc.pubtoaddr(msg_data['pub'])
-
+            
+            #creator_address = '0x' + sha3_256(msg_data['pub'])[-20:].encode('hex')
             creator_address = msg_data['pub'][:20]
+            creator_pub = msg_data['pub']
             
             payload_inner = loads_compact(payload_decoded['blind_reveal'])
 
@@ -645,20 +650,20 @@ class CCCoinCore:
                     
                     ## check that no one's confirmed it:
                     
-                    tm = self.tdb.lookup('paid_rewards_lock',
-                                         'BLOCKCHAIN_CONFIRMED',
-                                         user_id,
+                    tm = self.tdb.lookup('user_id_to_username',
+                                         T_ANY_FORK,
+                                         msg_data['pub'],
                                          default = False,
                                          )[0]
                     
                     if tm is False:
-                        
                         self.tdb.store('user_id_to_username',
                                        received_via,
                                        msg_data['pub'],
-                                       payload_inner['username'],
-                                       start_block = block_num,
+                                       payload_inner['username'][:25],
+                                       start_block = msg['blockNumber'], ## TODO, blind block
                                        )
+                    #print 'PUB', msg_data['pub']
                 
             elif payload_decoded['item_type'] == 'posts':
                 
@@ -688,6 +693,7 @@ class CCCoinCore:
                                       #'score':1,
                                       #'score_weighted':1,
                                       'creator_address':creator_address,
+                                      'creator_pub':creator_pub,
                                       }
 
                     self.posts_by_post_id[post_id] = post                        

@@ -283,7 +283,10 @@
 								   style="bottom:auto;top:-40px;"><i class="material-icons grey-text text-lighten-2">thumb_down</i></a><!-- keyboard_arrow_down -->
 								<div class="row" style="margin:0;">
 									<div class="card-creator-text">
-										<a href="/?user={{ the_item['status']['creator_address'] }}" class="red-text text-accent-4">{{ the_item['status']['creator_address'][:6] }}</a>
+									  <a href="/?user={{ the_item['status']['creator_address'] }}" class="red-text text-accent-4">{{ handler.cccoin.tdb.lookup('user_id_to_username', T_ANY_FORK, the_item['status']['creator_pub'], default = 'pending_'+the_item['status']['creator_address'][:10])[0] }}
+									 
+									    {% comment list(handler.cccoin.tdb.iterate_block_items('user_id_to_username', T_ANY_FORK,)) %}
+									  </a>
 										<span class="card-time-ago grey-text" data-time-created="{{ the_item['status']['created_time'] }}">{{ htime_ago(the_item['status']['created_time']) }}</span>
 									</div>
 									<div>

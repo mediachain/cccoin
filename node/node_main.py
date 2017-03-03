@@ -6,6 +6,9 @@
 
 TEST_MODE = False
 
+REWARDS_ACCOUNT = '0x4effded5ac372ec3318142de763d553ca444c1c6'
+#REWARDS_ACCOUNT = False
+
 ## See cccoin/docs/nginx_config for nginx setup, or set to False to disable.:
 IMAGE_PROXY_PATH = '/images/'
 #IMAGE_PROXY_PATH = False
@@ -153,10 +156,10 @@ from time import time
 def setup_cccoin_contract(set_name = 'CCCoin',
                           set_symbol = 'CCC',
                           set_max_creation_rate_per_second = 1,
-                          set_minter_address = '0x4effded5ac372ec3318142de763d553ca444c1c6',
-                          set_cccoin_address = '0x4effded5ac372ec3318142de763d553ca444c1c6',
+                          set_minter_address = REWARDS_ACCOUNT,
+                          set_cccoin_address = REWARDS_ACCOUNT,
                           set_start_time = int(time()),
-                          deploy_from = '0x4effded5ac372ec3318142de763d553ca444c1c6',
+                          deploy_from = REWARDS_ACCOUNT,
                           ):
 
     print ('READY_TO_DEPLOY', locals())

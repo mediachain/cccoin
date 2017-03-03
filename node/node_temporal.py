@@ -73,7 +73,8 @@ class TemporalTable:
         
     def store(self, key, value, start_block, as_set_op = False):
         """ """
-        
+        print ('TemporalTable.store()', locals())
+    
         assert start_block != -maxint, 'ERROR: -MAXINT IS RESERVED'
 
         print ('STORE', key, value)
@@ -280,6 +281,7 @@ class TemporalForks:
         
     def store(self, fork_name, *args, **kw):
         """ store in specific fork """
+        print ('TemporalForks.store()', locals())
         with self.the_lock:
 
             if True:
@@ -431,8 +433,10 @@ class TemporalDB:
             ## Proxy the rest to individual TemporalForks:
             def handle(table_name, *args, **kw):
                 print ('HANDLE', func_name, table_name, args, kw)
-                return getattr(self.tables[table_name], func_name)(*args, **kw)
-        
+                r = getattr(self.tables[table_name], func_name)(*args, **kw)
+                print ('DONE_HANDLE', r)
+                return r
+            
         return handle
         
             
