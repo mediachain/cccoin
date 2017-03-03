@@ -85,6 +85,7 @@ $(document).ready(function () {
     () => {
       console.log('TOS accepted');
       send_tos_confirmation();
+      location.reload();
     },
     // TOS rejected
     () => {

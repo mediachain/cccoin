@@ -406,8 +406,8 @@ module.exports = exports = {
             display_error($error, 'ERROR: You must agree to the terms of service before proceeding');
             return false;
           }
+          display_error($error, false);
           tos_accepted_cb();
-          tos_modal.modal('close');
         })
 
         $('#tos_reject_button').on('click', () => {
