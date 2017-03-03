@@ -327,7 +327,15 @@ module.exports = exports = {
   },
 
   init_submit_form(submitPostFn) {
-    $('#modal1').modal({
+    const $modal = $('#modal1');
+    const $urlField = $('#image_url');
+    const $titleField = $('#image_title');
+    const $artistField = $('#artist_name');
+    const $licenseField = $('#image_license_type');
+    const $agreedCheckbox = $('#image_licence_agreed');
+    const $error = $('#submit_error_text');
+
+    $modal.modal({
       dismissible: true, // Modal can be dismissed by clicking outside of the modal
       opacity: .5, // Opacity of modal background
       inDuration: 300, // Transition in duration
@@ -335,48 +343,58 @@ module.exports = exports = {
       startingTop: '4%', // Starting top style attribute
       endingTop: '10%', // Ending top style attribute
       ready: function(modal, trigger) { // Callback for Modal open. Modal and trigger parameters available.
-        //alert("Ready");
-        //console.log(modal, trigger);
-        //TODO - avoid showing submit modal in the first place :)
         const keys = grab_keys();
         if (!keys) {
-           $('#modal1').modal('close');
-           $('#modal2').modal('open');
+           $modal.modal('close');
+           exports.show_login_modal();
            return;
          }
         else {
-           $("#image_url").focus();
+           $urlField.focus();
          }
-        
       },
       //complete: function() { alert('Closed'); } // Callback for Modal close
     });
 
     $('#submit_form').submit(function(e){
       e.preventDefault();
-
       console.log('START submit_form');
-      const $urlField = $('#image_url');
-      const $titleField = $('#image_title');
-      const $error = $('#submit_error_text');
 
       const image_url = $urlField.val();
       const image_title = $titleField.val();
+      const artist = $artistField.val();
+
 
       if (image_url.length < 3){
-        display_error($error, $('#submit_error_text'));
-        $("#image_url").focus();
+        display_error($error, 'Image URL is invalid.');
+        $urlField.focus();
         return false;
       }
 
       if (image_title.length == 0){
         display_error($error, 'Image title required.')
-        $("#image_title").focus();
+        $titleField.focus();
         return false;
       }
 
+      const agreed = $agreedCheckbox.is(':checked');
+      if (!agreed) {
+        display_error($error, 'You must agree that you have the right to submit this image.');
+        return false;
+      }
+
+      const license_type = $licenseField.find(':selected').val();
+      console.log('license element', $licenseField);
+      console.log('license val: ', license_type);
+      if (!license_type) {
+        display_error($error, 'You must choose a license.');
+        return false;
+      }
+
+      console.log('submitting post', image_url, image_title, license_type, artist);
       display_error($error, false);
-      submitPostFn(image_url, image_title);
+      submitPostFn(image_url, image_title, license_type, artist);
+      $modal.modal('close');
     });
   },
 

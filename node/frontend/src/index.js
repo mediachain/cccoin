@@ -18,7 +18,7 @@ const {
   money_update
 } = UI;
 
-function do_post(image_url, image_title){
+function do_post(image_url, image_title, license_type, artist_name){
   console.log('do_post()', image_url, image_title);
 
   const keys = grab_keys();
@@ -28,7 +28,7 @@ function do_post(image_url, image_title){
   }
 
   const {posting_priv, posting_pub} = keys;
-  const post = {image_url:image_url, image_title:image_title};
+  const post = {image_url:image_url, image_title:image_title, license_type: license_type, artist_name: artist_name};
   submit_posts(post, posting_priv, posting_pub, (err) => {
     if (err) {
       console.log("Error submitting post", err);
