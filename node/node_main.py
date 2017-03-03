@@ -9,6 +9,9 @@ TEST_MODE = False
 REWARDS_ACCOUNT = '0x4effded5ac372ec3318142de763d553ca444c1c6'
 #REWARDS_ACCOUNT = False
 
+## Flagging just for this web node:
+SUPER_FLAGGER = False
+
 ## See cccoin/docs/nginx_config for nginx setup, or set to False to disable.:
 IMAGE_PROXY_PATH = '/images/'
 #IMAGE_PROXY_PATH = False

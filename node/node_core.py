@@ -332,6 +332,7 @@ class CCCoinCore:
                                              'owed_rewards_lock',
                                              'user_id_to_username',
                                              'username_to_user_id',
+                                             'scores',
                                              ],
                               master_fork_name = 'BLOCKCHAIN_CONFIRMED',
                               fork_names = self.cw.confirm_states.keys() + ['DIRECT'],
@@ -688,7 +689,7 @@ class CCCoinCore:
                     
                     post['post_id'] = post_id
                     post['status'] = {'confirmed':False,
-                                      'created_time':int(time()),
+                                      'created_time': int(time()),
                                       'created_block_num':False, ## Filled in when confirmed via blockchain
                                       #'score':1,
                                       #'score_weighted':1,
@@ -698,10 +699,11 @@ class CCCoinCore:
 
                     self.posts_by_post_id[post_id] = post                        
 
-                    if received_via == 'BLOCKCHAIN_CONFIRMED':
+                    if received_via != 'DIRECT':
                         
                         post['status']['confirmed'] = True
                         post['status']['created_block_num'] = msg['blockNumber']
+                        post['status']['created_time'] = self.cw.block_details.get(msg['blockNumber'], {'timestamp':int(time())})['timestamp']
                         
                         self.tdb.store('posts',
                                        received_via,
@@ -726,7 +728,27 @@ class CCCoinCore:
                     
                     ## Record {(voter, item_id) -> direction} present lookup:
                     
-                    the_db['scores'][vote['item_id']] = the_db['scores'].get(vote['item_id'], 0) + vote['direction'] ## TODO - Not thread safe.
+                    #the_db['scores'][vote['item_id']] = the_db['scores'].get(vote['item_id'], 0) + vote['direction'] ## TODO - Not thread safe.
+
+                    if vote['direction'] in [-1, 1]:
+                        
+                        if vote['direction'] != self.tdb.lookup('scores',
+                                                                received_via,
+                                                                creator_pub + '|' + vote['item_id'],
+                                                                default = 0,
+                                                                )[0]:
+                            
+                            with self.tdb.the_lock:
+                                self.tdb.store('scores',
+                                               received_via,
+                                               creator_pub + '|' + vote['item_id'],
+                                               vote['direction'] + self.tdb.lookup('scores',
+                                                                                   received_via,
+                                                                                   creator_pub + '|' + vote['item_id'],
+                                                                                   default = 0,
+                                                                                   )[0],
+                                               msg['blockNumber'],
+                                               )
                     
                     ## Record {item_id -> voters} historic lookup:
 
@@ -748,7 +770,7 @@ class CCCoinCore:
                             try:
                                 self.tdb.remove('post_voters_' + str(int(vote['direction'])),
                                                 received_via,
-                                                vote['item_id'],
+                                                vote['post_id'],
                                                 creator_pub,
                                                 start_block = msg['blockNumber'],
                                                 as_set_op = True,
@@ -760,48 +782,45 @@ class CCCoinCore:
                     
                     if vote['direction'] in [1, -1]:
                         the_db['votes'][(creator_pub, vote['item_id'])] = vote['direction']
-
-                        if received_via == 'BLOCKCHAIN_CONFIRMED':
-                            self.tdb.store('unblinded_votes',
-                                           received_via,
-                                           (creator_pub, vote['item_id']),
-                                           vote['direction'],
-                                           msg['blockNumber'],
-                                           )
+                        
+                        self.tdb.store('unblinded_votes',
+                                       received_via,
+                                       creator_pub + '|' + vote['item_id'],
+                                       vote['direction'],
+                                       msg['blockNumber'],
+                                       )
                         
                     elif vote['direction'] == 0:
                         try: del the_db['votes'][(creator_pub, vote['item_id'])]
                         except: pass
 
-                        if received_via == 'BLOCKCHAIN_CONFIRMED':
-                            self.tdb.store('unblinded_votes',
-                                           received_via,
-                                           (creator_pub, vote['item_id']),
-                                           vote['direction'],
-                                           msg['blockNumber'],
-                                           )
+                        self.tdb.store('unblinded_votes',
+                                       received_via,
+                                       creator_pub + '|' + vote['item_id'],
+                                       vote['direction'],
+                                       msg['blockNumber'],
+                                       )
 
                     elif vote['direction'] == 2:
                         the_db['flags'][(creator_pub, vote['item_id'])] = vote['direction']
                                                 
-                        if received_via == 'BLOCKCHAIN_CONFIRMED':
-                            self.tdb.store('unblinded_flags',
-                                           received_via,
-                                           (creator_pub, vote['item_id']),
-                                           vote['direction'],
-                                           msg['blockNumber'],
-                                           )                        
+                        self.tdb.store('unblinded_flags',
+                                       received_via,
+                                       creator_pub + '|' + vote['item_id'],
+                                       vote['direction'],
+                                       msg['blockNumber'],
+                                       )
+                        
                     elif vote['direction'] == -2:
                         try: del the_db['flags'][(creator_pub, vote['item_id'])]
                         except: pass
-                        
-                        if received_via == 'BLOCKCHAIN_CONFIRMED':
-                            self.tdb.store('unblinded_flags',
-                                           received_via,
-                                           (creator_pub, vote['item_id']),
-                                           vote['direction'],
-                                           msg['blockNumber'],
-                                           )
+
+                        self.tdb.store('unblinded_flags',
+                                       received_via,
+                                       creator_pub + '|' + vote['item_id'],
+                                       vote['direction'],
+                                       msg['blockNumber'],
+                                       )
                         
                     else:
                         assert False, repr(vote['direction'])
@@ -981,9 +1000,10 @@ class CCCoinCore:
 
                         with self.tdb.the_lock:
                             self.tdb.store('earned_rewards_lock',
+                                           'DIRECT',
                                            user_id,
                                            reward + self.tdb.lookup('earned_rewards_lock',
-                                                                    received_via,
+                                                                    'DIRECT',
                                                                     user_id,
                                                                     end_block = doing_block_num,
                                                                     default = 0,
@@ -1058,12 +1078,22 @@ class CCCoinCore:
                 ## Cleanup:
 
                 if False:
-                    self.confirmed_unblinded_votes.prune_historical(doing_block_num - 2)
-                    self.confirmed_unblinded_flags.prune_historical(doing_block_num - 2)
-                    self.confirmed_min_lock_per_user.prune_historical(doing_block_num - 2)
-                    self.confirmed_lock_per_item.prune_historical(doing_block_num - 2)
-                    self.confirmed_posts.prune_historical(doing_block_num - 2)
-                    self.confirmed_post_voters[1].prune_historical(doing_block_num - 2)
+                    self.tdb.prune_historical('unblinded_votes',
+                                              T_ANY_FORK,
+                                              doing_block_num - 2,
+                                              )
+                    self.tdb.prune_historical('unblinded_flags',
+                                              T_ANY_FORK,
+                                              doing_block_num - 2)
+                    self.tdb.prune_historical('min_lock_per_user',
+                                              T_ANY_FORK,
+                                              doing_block_num - 2)
+                    self.tdb.prune_historical('lock_per_item',
+                                              T_ANY_FORK,
+                                              doing_block_num - 2)
+                    self.tdb.prune_historical('posts',
+                                              T_ANY_FORK,
+                                              doing_block_num - 2)
                     
 
             ### END REWARDS
@@ -1089,16 +1119,7 @@ class CCCoinCore:
             #print "the_db['scores']", the_db['scores']
             #print 'self.blind_lookup', self.blind_lookup
 
-            if False:
-                print 'confirmed_unblinded_votes',self.confirmed_unblinded_votes.hh
-                print 'confirmed_unblinded_flags',self.confirmed_unblinded_flags.hh
-                print 'confirmed_min_lock_per_user', self.confirmed_min_lock_per_user.hh
-                print 'confirmed_lock_per_item', self.confirmed_lock_per_item.hh
-                print 'confirmed_posts', self.confirmed_posts.hh
-                print 'confirmed_post_voters[1]', self.confirmed_post_voters[1].hh
-                print 'confirmed_owed_rewards_lock', self.confirmed_owed_rewards_lock.hh
-                print 'confirmed_paid_rewards_lock', self.confirmed_paid_rewards_lock.hh
-
+            
             print 'feed_history:'
             for c, xx in enumerate(self.feed_history):
                 print '%04d' % c, xx
@@ -1297,12 +1318,12 @@ class CCCoinCore:
         
         if filter_users:
             rr = []
-            #for post_id, post in self.tdb.iterate_block_items('earned_rewards_lock',
-            #                                                  T_ANY_FORK,
-            #                                                  start_block = old_rewards_block_num,
-            #                                                  end_block = old_rewards_block_num,
-            #                                                  ):
-            for xx in self.posts_by_post_id.itervalues():
+            #for xx in self.posts_by_post_id.itervalues():
+            for post_id, post in self.tdb.iterate_block_items('earned_rewards_lock',
+                                                              T_ANY_FORK,
+                                                              start_block = old_rewards_block_num,
+                                                              end_block = old_rewards_block_num,
+                                                              ):
                 if xx['status']['creator_address'] in filter_users:
                     rr.append(xx)
                     
@@ -1328,7 +1349,7 @@ class CCCoinCore:
         rr = [y for x,y in rr]
         
         rrr = {'success':True, 'items':rr, 'sort':sort_by}
-
+        
         print ('GOT', len(rrr))
         
         return rrr

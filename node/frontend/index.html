@@ -265,7 +265,8 @@
 							</div>
 							<div class="card-content">
 								{% if session %}
-								{% set is_up = (all_dbs['DIRECT']['votes'].get((session['pub'], the_item['post_id'])) == 1) or (all_dbs['BLOCKCHAIN_CONFIRMED']['votes'].get((session['pub'], the_item['post_id'])) == 1) %}
+								{% comment set is_up = (all_dbs['DIRECT']['votes'].get((session['pub'], the_item['post_id'])) == 1) or (all_dbs['BLOCKCHAIN_CONFIRMED']['votes'].get((session['pub'], the_item['post_id'])) == 1) %}
+								{% set is_up = (handler.cccoin.tdb.lookup('unblinded_votes', T_ANY_FORK, session['pub'] + '|' + the_item['post_id'], default = False)[0] == 1) %}
 								{% else %}
 								{% set is_up = False %}
 								{% end %}
@@ -274,7 +275,8 @@
 								   onclick="do_vote('{{ the_item['post_id'] }}',1); return false;"
 								   style="bottom:auto;top:-40px;"><i class="material-icons grey-text text-lighten-2">thumb_up</i></a>
 								{% if session %}
-								{% set is_down = (all_dbs['DIRECT']['votes'].get((session['pub'], the_item['post_id'])) == -1) or (all_dbs['BLOCKCHAIN_CONFIRMED']['votes'].get((session['pub'], the_item['post_id'])) == -1) %}
+								{% comment set is_down = (all_dbs['DIRECT']['votes'].get((session['pub'], the_item['post_id'])) == -1) or (all_dbs['BLOCKCHAIN_CONFIRMED']['votes'].get((session['pub'], the_item['post_id'])) == -1) %}
+								{% set is_down = (handler.cccoin.tdb.lookup('unblinded_votes', T_ANY_FORK, session['pub'] + '|' + the_item['post_id'], default = False)[0] == -1) %}
 								{% else %}
 								{% set is_down = False %}
 								{% end %}
@@ -299,7 +301,8 @@
 			</span>
 										<!-- &#8353; -->
 										{% if session %}
-										{% set is_flagged = (all_dbs['DIRECT']['flags'].get((session['pub'], the_item['post_id'])) == 2) or (all_dbs['BLOCKCHAIN_CONFIRMED']['flags'].get((session['pub'], the_item['post_id'])) == 2) %}
+										{% comment set is_flagged = (all_dbs['DIRECT']['flags'].get((session['pub'], the_item['post_id'])) == 2) or (all_dbs['BLOCKCHAIN_CONFIRMED']['flags'].get((session['pub'], the_item['post_id'])) == 2) %}
+										{% set is_flagged = (handler.cccoin.tdb.lookup('unblinded_flags', T_ANY_FORK, session['pub'] + '|' + the_item['post_id'], default = False)[0] == 2) %}
 										{% else %}
 										{% set is_flagged = False %}
 										{% end %}
