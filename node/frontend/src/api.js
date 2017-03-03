@@ -191,5 +191,9 @@ module.exports = exports = {
     });
 
     exports.blind_something(votes_string, votes.length, 'votes', posting_priv, posting_pub, callback);
+  },
+
+  send_tos_confirmation() {
+    // TODO: inform the server that the user accepted the TOS
   }
 }

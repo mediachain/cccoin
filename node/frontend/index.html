@@ -160,6 +160,12 @@
 		  border-bottom: 1px solid #ee6e73;
 		  box-shadow: 0 1px 0 0 #ee6e73;
 		}
+
+		#tos_content {
+			background-color: #f1f1f1;
+			color: #222222;
+			min-height: 150px;
+		}
 	</style>
 
 </head>
@@ -175,7 +181,6 @@
 			<li class="tab"><a target="_self" {% if sort_by == 'best' %} class="active" {% end %} href="/?sort=best">Best</a></li>
 		</ul>
 
-		<a href="#" data-activates="mobile-demo" class="button-collapse" style="display:none;"><i class="material-icons">menu</i></a>
 
 		<ul id="nav-mobile" class="right xhide-on-med-and-down">
 			<li style="display:none;">
@@ -513,6 +518,50 @@
             </div>
 		</div>
 
+</div>
+
+<!-- TOS Modal -->
+<div id="tos_modal" class="modal">
+	<form id="tos_form" class="col s12">
+		<div class="modal-content">
+			<h4>License Agreement</h4>
+
+			<div class="card-panel yellow accent-1">
+				You're being asked to accept this license agreement because this is the first time you've used this
+				passphrase to sign into this server.
+			</div>
+
+			<div class="row">
+				You must read and accept the following agreement in order to use this site:
+			</div>
+
+			<div class="row">
+				<textarea id="tos_content" rows="30" cols="80">
+					Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec et pretium felis. Praesent in aliquet ex, quis dapibus felis. Proin dapibus placerat posuere. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia Curae; Morbi rutrum nisi in libero placerat, id eleifend odio dictum. Pellentesque id ligula nec leo semper sodales. Cras ut molestie turpis. Sed ut elit venenatis, iaculis elit eget, consectetur nunc. Nullam euismod ultricies nunc mollis consequat. Nunc finibus nunc nibh, at dignissim tellus vehicula quis. Proin efficitur accumsan sapien, ut dictum urna ultricies vitae. Quisque id enim sit amet lorem cursus feugiat. Suspendisse potenti. Nullam sollicitudin id lectus vitae pulvinar.
+
+	Pellentesque a erat quis ipsum imperdiet convallis. Etiam venenatis volutpat velit, vitae pharetra ante bibendum eu. In et venenatis velit. Nulla maximus sollicitudin sollicitudin. Pellentesque pretium maximus risus, ac sollicitudin arcu ullamcorper eget. Aliquam sit amet placerat metus. Quisque et nunc nec ex iaculis pulvinar. Nullam ut nisi eu leo sagittis molestie in vitae magna. Pellentesque non erat et justo finibus convallis quis at massa.
+
+	Phasellus vitae ex lectus. Maecenas purus urna, suscipit non ultricies placerat, mollis vel est. Vestibulum nisi justo, bibendum a lobortis a, feugiat in ante. Nullam non fringilla urna. Integer ligula ex, vehicula dictum sem sed, ultricies porttitor velit. Vivamus in dapibus leo, nec efficitur nibh. Etiam ante elit, euismod in vestibulum id, lacinia ullamcorper mi. Nunc ultricies mi sit amet tristique dapibus. Sed pretium dolor non quam semper, vitae imperdiet enim rhoncus. Sed eget rhoncus ante. Mauris sit amet mollis ex, sit amet ultricies augue. Aliquam feugiat odio eu porttitor egestas. Morbi viverra pellentesque libero efficitur fringilla. Praesent ut ipsum convallis, tempor nunc sit amet, molestie augue.
+
+	Phasellus eleifend egestas risus, a pretium libero hendrerit sit amet. Morbi aliquam enim at enim porttitor feugiat. Donec interdum orci a arcu tempus maximus et quis mi. Quisque vestibulum, elit nec gravida eleifend, dolor felis suscipit risus, vel malesuada dolor nunc et diam. Ut rhoncus nec velit aliquet iaculis. Praesent posuere maximus arcu at laoreet. In hac habitasse platea dictumst. Quisque congue tempor mollis. Vivamus et fringilla nisi. Curabitur bibendum eu enim dictum vulputate. Pellentesque in consequat neque. Nulla facilisi.
+
+	Mauris feugiat risus at sodales pharetra. Cras volutpat velit id faucibus sodales. Mauris euismod ipsum nec tortor sodales, nec ornare ante pretium. Mauris sit amet diam ut leo molestie venenatis ut in neque. Aliquam dignissim laoreet nisl at accumsan. Suspendisse odio massa, tempor auctor ultricies ut, posuere eget risus. Maecenas laoreet faucibus lorem, quis consequat nibh sodales sit amet. In in justo diam. Quisque lobortis posuere elementum. Fusce vel dapibus arcu. Phasellus vulputate urna quis vehicula condimentum. Vivamus id diam molestie, lacinia lacus non, egestas est.
+
+	Sed nec purus in tortor vulputate dictum. Fusce pellentesque dignissim elit eu molestie. Ut porttitor purus vel scelerisque bibendum. Sed efficitur semper justo et sollicitudin. Proin placerat vulputate felis a ultricies. Maecenas vitae accumsan est, at fringilla mauris. Aliquam sem ante, euismod sit amet velit quis, consequat faucibus dolor. Maecenas ac consequat urna. Proin non dictum turpis. Quisque vitae pretium sapien. Aliquam lacinia diam vel enim euismod ullamcorper. Sed maximus aliquam elit ac venenatis. Praesent convallis mattis aliquet. Cras pulvinar congue ornare. Suspendisse sed convallis metus, gravida gravida urna.
+
+	In urna ante, aliquam sed ligula nec, rutrum hendrerit dolor. Aenean tempus mattis dolor vel viverra. Nullam fermentum, lorem sit amet dapibus tristique, odio nulla imperdiet orci, at mollis ipsum dolor vel enim. Vivamus tempor rutrum purus, malesuada pulvinar orci pulvinar id. Morbi tempus est in lobortis efficitur. Duis rhoncus augue eu mattis porta. Donec commodo lectus sit amet rhoncus pretium. In vel pulvinar magna, ac euismod mauris. Proin lobortis mattis mollis. Suspendisse eget purus eu nisi consequat vulputate. Suspendisse nec nunc vitae ipsum ultricies condimentum. Cras eget pretium leo.
+				</textarea>
+			</div>
+		</div>
+		<div class="modal-fixed-footer">
+			<div class="row">
+				<div class="col s6 offset-s6">
+					<button id="tos_reject_button" class="btn-flat waves-effect waves-light red">Reject Terms</button>
+					<input id="tos_accept_button" type="submit" class="green waves-effect waves-light btn-flat" value="Accept Terms">
+				</div>
+			</div>
+		</div>
+	</form>
 </div>
 
 </body>

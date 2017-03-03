@@ -242,6 +242,10 @@ module.exports = exports = {
         }
 
         if (rr['success']){
+          if (rr['prompt_tos']) {
+            exports.show_tos_modal();
+            return;
+          }
           location.reload();
         }
         else {
@@ -288,6 +292,10 @@ module.exports = exports = {
         }
 
         if (rr['success']){
+          if (rr['prompt_tos']) {
+            exports.show_tos_modal();
+            return;
+          }
           location.reload();
         }
         else {
@@ -370,6 +378,37 @@ module.exports = exports = {
       display_error($error, false);
       submitPostFn(image_url, image_title);
     });
+  },
+
+  init_tos_modal(tos_accepted_cb, tos_rejected_cb) {
+    if (typeof tos_accepted_cb !== 'function') {
+      tos_accepted_cb = () => {}
+    }
+    if (typeof tos_rejected_cb !== 'function') {
+      tos_rejected_cb = () => {}
+    }
+
+    $('#tos_modal').modal({
+      dismissible: false, // need to explicitly agree / disagree
+      opacity: .5, // Opacity of modal background
+      inDuration: 300, // Transition in duration
+      outDuration: 200, // Transition out duration
+      startingTop: '4%', // Starting top style attribute
+      endingTop: '10%', // Ending top style attribute
+      ready: function () {
+        $('#tos_form').submit(() => {
+          tos_accepted_cb();
+        })
+
+        $('#tos_reject_button').on('click', () => {
+          tos_rejected_cb();
+        })
+      }
+    });
+  },
+
+  show_tos_modal() {
+    $('#tos_modal').modal('open');
   },
 
   toggle_fixed_navbar(which){
