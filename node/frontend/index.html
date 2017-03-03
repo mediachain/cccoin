@@ -168,11 +168,22 @@
 			min-height: 150px;
 		}
 
+		body {
+			display: flex;
+			min-height: 100vh;
+			flex-direction: column;
+		}
+
+		main {
+			flex: 1 0 auto;
+		}
+
 	</style>
 
 </head>
 <body>
 
+<header>
 <nav class="nav-extended transparent z-depth-0" id="main_nav">
 	<div class="nav-wrapper">
 		<a href="/"
@@ -232,7 +243,8 @@
 		</ul>
 	</div>
 </nav>
-
+</header>
+<main>
 <div class="container" style="margin:0;padding-left:10px"> <!-- No idea why this padding adjustment is necessary... -->
 
 
@@ -354,7 +366,7 @@
 		</div>
 	</div>
 </div>
-
+</main>
 
 
 <!-- Modal 1 -->
@@ -569,5 +581,22 @@
 	</form>
 </div>
 
+<footer class="footer-copyright">
+	<div class="container">
+		<div class="row valign-wrapper">
+			<div class="col s6 valign-wrapper">
+					<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/">
+						<img alt="Creative Commons License" src="https://i.creativecommons.org/l/by-sa/4.0/88x31.png">
+					</a>
+					<span style="margin-left: 15px;">© Mediachain Labs</span>
+			</div>
+			<div class="col s6 valign-wrapper">
+				<a href="/terms-of-service" style="margin-left: 15px;">Terms of Service</a>
+				<a href="/privacy-policy" style="margin-left: 15px;">Privacy Policy</a>
+				<a href="/copyright-policy" style="margin-left: 15px;">DMCA Copyright Policy</a>
+			</div>
+		</div>
+	</div>
+</footer>
 </body>
 </html>
