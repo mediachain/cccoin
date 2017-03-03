@@ -161,7 +161,7 @@ def setup_cccoin_contract(set_name = 'CCCoin',
 
     print ('READY_TO_DEPLOY', locals())
     
-    with open('../Contracts/CCCoinToken.sol') as f:
+    with open(MAIN_CONTRACT_FN) as f:
         code = f.read()
 
     ## Need to do in 2 steps, so we can pass `cw.c.coinbase` to the constructor:
