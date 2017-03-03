@@ -4,13 +4,13 @@ const $ = require('jquery');
 require('materialize-css')
 
 const { grab_keys, do_logout, login } = require('./auth');
-const { submit_posts, submit_votes } = require('./api');
+const { submit_posts, submit_votes, send_tos_confirmation } = require('./api');
 const UI = require('./ui');
 const {
   init_css,
   init_login_modal,
   init_submit_form,
-  init_stats_panel,
+  init_tos_modal,
   show_login_modal,
   update_card_for_vote,
   update_card_timestamps,
@@ -80,7 +80,18 @@ $(document).ready(function () {
   init_css();
   init_login_modal(login);
   init_submit_form(do_post);
-  //init_stats_panel();
+  init_tos_modal(
+    // TOS accepted callback
+    () => {
+      console.log('TOS accepted');
+      send_tos_confirmation();
+      location.reload();
+    },
+    // TOS rejected
+    () => {
+      console.log('TOS rejected');
+      do_logout();
+    });
 
   check_session();
 

@@ -162,18 +162,18 @@ module.exports = exports = {
    *
    * @param password
    * @param requested_username
-   * @param the_callback
+   * @param success_callback - called when login completes successfully
    */
-  login(password, requested_username, the_callback){
+  login(password, requested_username, success_callback, tos_prompt_callback){
       console.log('finish()', password, requested_username);
 
     if (typeof requested_username === 'undefined'){
       requested_username = "";
     }
 
-    if (typeof the_callback === 'undefined') {
+    if (typeof success_callback === 'undefined') {
       console.warn('login called without callback');
-      the_callback = () => {};
+      success_callback = () => {};
     }
 
       if (requested_username){
@@ -191,11 +191,11 @@ module.exports = exports = {
 			  'username',
 			  posting_priv,
 			  posting_pub,
-			  function(){exports.login_finish(password, requested_username, the_callback)}
+			  function(){exports.login_finish(password, requested_username, success_callback)}
 			 );
       }
       else {
-	  exports.login_finish(password, requested_username, the_callback);
+	  exports.login_finish(password, requested_username, success_callback);
       }
       
   },
@@ -263,11 +263,12 @@ module.exports = exports = {
           the_callback(msg2);
           return;
         }
-
         const username = msg2['got_username'];
 
-        // Success:
+        // FIXME: remove once backend is sending prompt_tos field!
+        msg2['prompt_tos'] = true;
 
+        // Success:
         console.log('login success:', username);
         exports.store_keys({username, posting_priv, posting_pub, owner_addr})
 

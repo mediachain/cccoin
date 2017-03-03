@@ -4,7 +4,7 @@
 build/
 
 # offchain deploy/build dir
-node/build_offchain/
+node/build_contracts/
 
 # Created by .ignore support plugin (hsz.mobi)
 ### Node template
@@ -148,3 +148,4 @@ ENV/
 # Rope project settings
 .ropeproject
 
+Vagrantfile

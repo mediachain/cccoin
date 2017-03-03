@@ -160,6 +160,12 @@
 		  border-bottom: 1px solid #ee6e73;
 		  box-shadow: 0 1px 0 0 #ee6e73;
 		}
+
+		#tos_content {
+			background-color: #f1f1f1;
+			color: #222222;
+			min-height: 150px;
+		}
 	</style>
 
 </head>
@@ -175,7 +181,6 @@
 			<li class="tab"><a target="_self" {% if sort_by == 'best' %} class="active" {% end %} href="/?sort=best">Best</a></li>
 		</ul>
 
-		<a href="#" data-activates="mobile-demo" class="button-collapse" style="display:none;"><i class="material-icons">menu</i></a>
 
 		<ul id="nav-mobile" class="right xhide-on-med-and-down">
 			<li style="display:none;">
@@ -513,6 +518,45 @@
             </div>
 		</div>
 
+</div>
+
+<!-- TOS Modal -->
+<div id="tos_modal" class="modal">
+	<form id="tos_form" class="col s12">
+		<div class="modal-content">
+			<h4>License Agreement</h4>
+			<div class="row">
+				You must read and accept the following agreement in order to use this site:
+			</div>
+
+			<div class="row">
+				<textarea id="tos_content" rows="30" cols="80">
+					THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+				</textarea>
+			</div>
+		</div>
+		<div class="row">
+			<div class="input-field col s12">
+				<input type="checkbox" id="tos_agree_checkbox">
+				<label for="tos_agree_checkbox">
+					I have read and agreed to the <a target="_blank" href="/terms-of-service">Terms of Service and Privacy Agreement</a>
+				</label>
+			</div>
+		</div>
+		<div class="row">
+			<div class="col s12">
+				<p id="tos_error_text" class="red-text text-darken-2" style="margin-bottom:0;"></p>
+			</div>
+		</div>
+		<div class="modal-fixed-footer">
+			<div class="row">
+				<div class="col s6 offset-s6">
+					<button id="tos_reject_button" class="btn-flat waves-effect waves-light red">Reject Terms</button>
+					<input id="tos_accept_button" type="submit" class="green waves-effect waves-light btn-flat" value="Accept Terms">
+				</div>
+			</div>
+		</div>
+	</form>
 </div>
 
 </body>
