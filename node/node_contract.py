@@ -266,7 +266,8 @@ class ContractWrapper:
             
             if not had_any_events:
                 print ('NO_NEW_EVENTS')
-                sleep(self.contract_thread_sleep_time)
+            
+            sleep(self.contract_thread_sleep_time)
     
     def start_contract_thread(self,):
         """
