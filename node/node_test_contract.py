@@ -3,7 +3,7 @@
 """
 """
 
-from node_contract import ContractWrapper, test_contract_wrapper
+from node_contract import ContractWrapper, test_contract_wrapper, setup_contract
 
 import bitcoin as btc
 
@@ -57,52 +57,6 @@ def test_getters():
     print ('PASSED')
     
 
-def setup_contract(set_name = 'CCCoin',
-                   set_symbol = 'CCC',
-                   set_max_creation_rate_per_second = 1,
-                   set_minter_address = False,
-                   set_cccoin_address = False,
-                   set_start_time = int(time()),
-                   ):
-    
-    with open('../Contracts/CCCoinToken.sol') as f:
-        code = f.read()
-
-    ## Need to do in 2 steps, so we can pass `cw.c.coinbase` to the constructor:
-    
-    cw = ContractWrapper(the_code = code,
-                         settings_confirm_states = {'BLOCKCHAIN_CONFIRMED':1},
-                         start_at_current_block = True, ## dont get logs from old tests
-                         auto_deploy = False,
-                         )
-
-    if set_minter_address is False:
-        set_minter_address = cw.c.eth_coinbase()
-    
-    if set_cccoin_address is False:
-        set_cccoin_address = cw.c.eth_coinbase()
-
-    print [set_name,
-           set_symbol,
-           set_max_creation_rate_per_second,
-           set_minter_address,
-           set_cccoin_address,
-           set_start_time,
-           ]
-
-    ## For the sig - NO SPACES AFTER COMMAS ALLOWED! USE uint256 instead of uint!:
-    
-    cw.deploy(the_sig = 'CCCoinToken(string,string,uint256,address,address,uint256)', 
-              the_args = [set_name,
-                          set_symbol,
-                          set_max_creation_rate_per_second,
-                          set_minter_address,
-                          set_cccoin_address,
-                          set_start_time,
-                          ],
-              )
-
-    return cw
 
 ##
 #### Test `max_rate_not_reached`:

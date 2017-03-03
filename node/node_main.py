@@ -6,7 +6,9 @@
 
 TEST_MODE = False
 
-IMAGE_PROXY_PATH = '/images/' ## See cccoin/docs/nginx_config to setup, or set to False to disable.
+## See cccoin/docs/nginx_config for nginx setup, or set to False to disable.:
+IMAGE_PROXY_PATH = '/images/'
+#IMAGE_PROXY_PATH = False
 
 DATA_DIR = 'build_contracts/'
 
@@ -145,12 +147,60 @@ def get_deployed_address():
             return d
     return False
 
+
+from time import time
+
+def setup_cccoin_contract(set_name = 'CCCoin',
+                          set_symbol = 'CCC',
+                          set_max_creation_rate_per_second = 1,
+                          set_minter_address = '0x4effded5ac372ec3318142de763d553ca444c1c6',
+                          set_cccoin_address = '0x4effded5ac372ec3318142de763d553ca444c1c6',
+                          set_start_time = int(time()),
+                          deploy_from = '0x4effded5ac372ec3318142de763d553ca444c1c6',
+                          ):
+
+    print ('READY_TO_DEPLOY', locals())
     
-def deploy_contract(via_cli = False):
+    with open('../Contracts/CCCoinToken.sol') as f:
+        code = f.read()
+
+    ## Need to do in 2 steps, so we can pass `cw.c.coinbase` to the constructor:
+    
+    cw = ContractWrapper(the_code = code,
+                         settings_confirm_states = {'BLOCKCHAIN_CONFIRMED':1},
+                         start_at_current_block = True, ## dont get logs from old tests
+                         auto_deploy = False,
+                         )
+
+    if set_minter_address is False:
+        set_minter_address = cw.c.eth_coinbase()
+    
+    if set_cccoin_address is False:
+        set_cccoin_address = cw.c.eth_coinbase()
+    
+    ## For the sig - NO SPACES AFTER COMMAS ALLOWED! USE uint256 instead of uint!:
+    
+    cw.deploy(the_sig = 'CCCoinToken(string,string,uint256,address,address,uint256)', 
+              the_args = [set_name,
+                          set_symbol,
+                          set_max_creation_rate_per_second,
+                          set_minter_address,
+                          set_cccoin_address,
+                          set_start_time,
+                          ],
+              deploy_from = deploy_from,
+              block = True,
+              )
+
+    return cw
+
+
+def deploy_contract(via_cli = False,
+                    ):
     """
     Deploy new instance of this dApp to the blockchain.
     """
-
+    
     #assert not DEPLOY_WITH_TRUFFLE, 'Must deploy with truffle instead, because DEPLOY_WITH_TRUFFLE is True.'
     
     fn = CONTRACT_ADDRESS_FN
@@ -159,19 +209,20 @@ def deploy_contract(via_cli = False):
     
     if not exists(DATA_DIR):
         mkdir(DATA_DIR)
+
+    cw = setup_cccoin_contract()
     
-    cont = ContractWrapper(the_code = main_contract_code,
-                           settings_confirm_states = DEFAULT_CONFIRM_STATES,
-                           )
-    
-    addr = cont.deploy()
+    assert (cw.contract_address, cw.contract_address)
     
     with open(fn, 'w') as f:
-        f.write(addr)
+        f.write(cw.contract_address)
     
-    print ('DONE', addr, '->', fn)
+    print ('NEW_CONTRACT_DEPLOYED', cw.contract_address, '->', fn)
+    print ('PRESS ENTER...')
+    raw_input()
     
-    return addr
+    
+    return cw.contract_address
     
 ##
 #### Cross-Component Testing:

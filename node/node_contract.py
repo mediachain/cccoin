@@ -18,7 +18,7 @@ def fixed_int_to_hex(vv):
 
 from threading import current_thread,Thread
 from Queue import Queue
-from time import sleep
+from time import sleep, time
 
 class ContractWrapper:
     
@@ -106,6 +106,7 @@ class ContractWrapper:
                the_sig = False,
                the_args = False,
                block = False,
+               deploy_from = False,
                callback = False,
                ):
         """ Deploy contract. Optional args_sig and args used to pass arguments to contract constructor."""
@@ -117,15 +118,17 @@ class ContractWrapper:
             self.the_args = the_args
 
         assert self.the_code
+
+        if deploy_from is False:
+            deploy_from = self.c.eth_coinbase()
         
-        print ('DEPLOYING_CONTRACT...', the_sig, the_args)        
+        print ('DEPLOYING_CONTRACT...', 'deploy_from:', deploy_from, 'the_sig:', the_sig, 'the_args:', the_args)        
         # get contract address
         xx = self.c.eth_compileSolidity(self.the_code)
         #print ('GOT',xx)
         compiled = get_compiled_code(xx)
 
-
-        contract_tx = self.c.create_contract(from_ = self.c.eth_coinbase(),
+        contract_tx = self.c.create_contract(from_ = deploy_from,
                                              code = compiled,
                                              gas = 3000000,
                                              sig = self.the_sig,
@@ -395,3 +398,4 @@ def wait_for_confirmation(eth_json_rpc, tx_hash, sleep_time=0.1):
 
 def test_contract_wrapper():
     pass
+

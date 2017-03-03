@@ -82,6 +82,21 @@ contract CCCoinToken {
         cccoin_address = set_cccoin_address;
         start_time = set_start_time;
     }
+
+    //**** For TESTNET ONLY, allow minter to later modify constructor args:
+    
+    function changeSettings(string set_name, string set_symbol, uint set_decimals, uint set_max_creation_rate_per_second, address set_minter_address, address set_cccoin_address, uint set_start_time)
+    only_minter
+    {
+
+	name = set_name;
+	symbol = set_symbol;
+	decimals = set_decimals;
+	max_creation_rate_per_second = set_max_creation_rate_per_second;
+        minter_address = set_minter_address;
+        cccoin_address = set_cccoin_address;
+        start_time = set_start_time;
+    }
     
     //**** Master log for most user dApp actions:
     
@@ -98,7 +113,7 @@ contract CCCoinToken {
     external
     payable
     only_minter
-    max_rate_not_reached(start_time)
+    //max_rate_not_reached(start_time)
     {
         balances[recipient] = safeAdd(balances[recipient], reward_tok);
         totalSupply = safeAdd(totalSupply, reward_tok);

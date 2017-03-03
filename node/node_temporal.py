@@ -1,18 +1,15 @@
 #!/usr/bin/env python
 
 """
-Temporal chain database, and chain fork consensus.
 
-TODO - Also create version with SQL backend.
+Maintains a stable view of / access to state:
+ - Combines multiple underlying blockchain sources,
+ - Temporally tracks degrees of confidence based on age, with chain reorg support.
+
 """
 
-
-from sys import maxint
-import threading
-import multiprocessing
-
 ##
-## BUG1 means,
+## Note: BUG1 refers to,
 ##
 ## When you have nested manager.dict()'s, instead of:
 ##  h['a']['b'] = 'c'
@@ -23,18 +20,31 @@ import multiprocessing
 ##   h = y
 ##
 
+from sys import maxint
+import threading
+import multiprocessing
+
 class TemporalTable:
     """
-    Temporal in-memory database. Update and lookup historical values of a key.    
+    Temporal in-memory database. Update and lookup historical values of a key.
+    
+    TODO:
+    - Also create version with SQL backend.
     """
     
     def __init__(self,
                  process_safe = True,
+                 manager = False,
                  ):
         self.process_safe = process_safe
         
+        assert process_safe, 'TODO - double check thread-based concurrency support by TemporalForks & TemporalDB'
+        
         if self.process_safe:
-            self.manager = multiprocessing.Manager()
+            if manager is not False:
+                self.manager = manager
+            else:
+                self.manager = multiprocessing.Manager()
             self.process_safe = True
             self.the_lock = self.manager.RLock()
             self.hh = self.manager.dict()
@@ -217,6 +227,7 @@ class TemporalTable:
                     del tm[bn]
                     self.hh[key] = tm
 
+T_ANY_FORK = 'T_ANY_FORK'
 
 
 class TemporalForks:
@@ -226,30 +237,37 @@ class TemporalForks:
     Lookup latest state, resolved from multiple forks.
 
     Discard keys from direct that never got confirmed within max_confirm_time.
+
+    Use 'ANY_FORK' to indicate that action should be applied to all / consider all forks.
     """
     def __init__(self,
-                 master_name,      ## 'name'
-                 fork_names,       ## ['name']
+                 master_fork_name,  ## 'name'
+                 fork_names,        ## ['name']
                  max_non_master_age = False,
+                 manager = False,
+                 CONST_ANY_FORK = T_ANY_FORK, ## just in case you really need to change it
                  ):
         """
-        - master_name: name of master fork
+        - master_fork_name: name of master fork
         - max_non_master_age: number of blocks before non-master blocks expire.
         """
         
-        self.ANY_FORK = 'ANY_FORK'
-        
-        assert master_name in fork_names
-        assert self.ANY_FORK not in fork_names
-        
-        manager = multiprocessing.Manager()
+        assert master_fork_name in fork_names
+        assert CONST_ANY_FORK not in fork_names
 
+        self.T_ANY_FORK = CONST_ANY_FORK
+        
+        if manager is not False:
+            self.manager = manager
+        else:
+            self.manager = multiprocessing.Manager()
+        
         self.forks = {} ## Doesn't ever change after this function, so regular dict.
         
         for fork in fork_names:
-            self.forks[fork] = TemporalTable(process_safe = True)
+            self.forks[fork] = TemporalTable(process_safe = True, manager = self.manager)
         
-        self.master_name = master_name
+        self.master_fork_name = master_fork_name
         self.max_non_master_age = max_non_master_age
         self.latest_master_block_num = manager.Value('i', -maxint)
         
@@ -272,7 +290,7 @@ class TemporalForks:
                     sb = args[2]
                 self.update_latest_master_block_num(sb)
             
-            if fork_name == self.ANY_FORK:
+            if fork_name == self.T_ANY_FORK:
                 assert False, 'really store in all forks?'
             else:
                 assert fork_name in self.forks
@@ -281,7 +299,7 @@ class TemporalForks:
     def remove(self, fork_name, *args, **kw):
         """ remove just from specific fork """
         with self.the_lock:
-            if fork_name == self.ANY_FORK:
+            if fork_name == self.T_ANY_FORK:
                 for fork_name, fork in self.forks.items():
                     fork.remove(*args, **kw)
             else:
@@ -292,7 +310,7 @@ class TemporalForks:
         """ Lookup latest non-expired from any fork. """
         with self.the_lock:
             
-            if fork_name != self.ANY_FORK:
+            if fork_name != self.T_ANY_FORK:
                 assert fork_name in self.forks
                 return self.forks[fork_name].lookup(key = key,
                                                     start_block = start_block,
@@ -314,7 +332,7 @@ class TemporalForks:
             
             for fork_name, fork in self.forks.items():
 
-                if fork_name != self.master_name:
+                if fork_name != self.master_fork_name:
                     x_start_block = start_block_non_master
                 else:
                     x_start_block = start_block
@@ -343,7 +361,7 @@ class TemporalForks:
     def iterate_block_items(self, fork_name, *args, **kw):
         with self.the_lock:
             
-            if fork_name != self.ANY_FORK:
+            if fork_name != self.T_ANY_FORK:
                 assert fork_name in self.forks
                 for xx in self.forks[fork_name].iterate_block_items(*args, **kw):
                     yield xx
@@ -363,7 +381,7 @@ class TemporalForks:
     
     def prune_historical(self, fork_name, *args, **kw):
         with self.the_lock:
-            if fork_name != self.ANY_FORK:
+            if fork_name != self.T_ANY_FORK:
                 assert fork_name in self.forks
                 return self.forks[fork_name].prune_historical(*args, **kw)
 
@@ -372,7 +390,7 @@ class TemporalForks:
             
     def wipe_newer(self, fork_name, *args, **kw):
         with self.the_lock:
-            if fork_name != self.ANY_FORK:
+            if fork_name != self.T_ANY_FORK:
                 assert fork_name in self.forks
                 return self.forks[fork_name].wipe_newer(*args, **kw)
 
@@ -380,6 +398,43 @@ class TemporalForks:
                 fork.wipe_newer(*args, **kw)
 
 
+class TemporalDB:
+    """
+    Synchronizes creation / access / updates to a collection of TemporalForks.
+    """
+    def __init__(self,
+                 table_names,
+                 master_fork_name,
+                 fork_names,
+                 ):
+        self.manager = multiprocessing.Manager()
+        self.the_lock = self.manager.RLock()
+
+        self.tables = {}
+        for table_name in table_names:
+            self.tables[table_name] = TemporalForks(master_fork_name = master_fork_name,
+                                                    fork_names = fork_names,
+                                                    manager = self.manager,
+                                                    )
+    
+    def __getattr__(self, func_name):
+        """ Proxy everything else through to appropriate TemporalForks. """
+        
+        if func_name.startswith('all_'):
+            ## Apply to all TemporalForks. Note, not for functions with return values:
+            def handle(*args, **kw):
+                x_func_name = func_name[4:]
+                print ('HANDLE_ALL', x_func_name, args, kw)
+                for table_name, table in self.tables.iteritems():
+                    getattr(self.tables[table_name], x_func_name)(*args, **kw)
+        else:
+            ## Proxy the rest to individual TemporalForks:
+            def handle(table_name, *args, **kw):
+                print ('HANDLE', func_name, table_name, args, kw)
+                return getattr(self.tables[table_name], func_name)(*args, **kw)
+        
+        return handle
+        
             
 def test_temporal_table():
     print ('START test_temporal_table()')
@@ -401,7 +456,7 @@ def test_temporal_table():
 
 def test_temporal_forks():
     print ('START test_temporal_forks()')
-    xx = TemporalForks(master_name = 'fork1', fork_names = ['fork1', 'fork2'])
+    xx = TemporalForks(master_fork_name = 'fork1', fork_names = ['fork1', 'fork2'])
     xx.update_latest_master_block_num(1)
     xx.store('fork1', 'a', 'b', start_block = 1)
     assert xx.lookup('fork1', 'a')[0] == 'b'
@@ -420,19 +475,44 @@ def test_temporal_forks():
     xx.store('fork1', 'e','g',3)
     assert tuple(xx.iterate_block_items('fork1')) == (('a', 'c'), ('e', 'g'))
     assert tuple(xx.iterate_block_items('fork1', end_block = 1)) == (('a', 'b'), ('e', 'h'))
-    print ('PASSED_BASIC')
+    print ('PASSED_FORKS_BASIC')
 
-    xx = TemporalForks(master_name = 'fork1', fork_names = ['fork1', 'fork2'], max_non_master_age = 5)
+    xx = TemporalForks(master_fork_name = 'fork1', fork_names = ['fork1', 'fork2'], max_non_master_age = 5)
     xx.update_latest_master_block_num(1)
     xx.store('fork1', 'z', 'e', start_block = 1)
     xx.update_latest_master_block_num(2)
     xx.store('fork2', 'z', 'g', start_block = 2)
-    assert xx.lookup('ANY_FORK', 'z')[0] == 'g'
+    assert xx.lookup(T_ANY_FORK, 'z')[0] == 'g'
     xx.update_latest_master_block_num(50)
-    assert xx.lookup('ANY_FORK', 'z')[0] == 'e'
+    assert xx.lookup(T_ANY_FORK, 'z')[0] == 'e'
 
     print ('PASSED_FORKS')
+
+
+def test_temporal_db():
+    print ('START test_temporal_db()')
+    xx = TemporalDB(table_names = ['table1'], master_fork_name = 'fork1', fork_names = ['fork1', 'fork2'])
+    xx.all_update_latest_master_block_num(1)
+    xx.store('table1', 'fork1', 'a', 'b', start_block = 1)
+    assert xx.lookup('table1', 'fork1', 'a')[0] == 'b'
+    xx.all_update_latest_master_block_num(3)
+    xx.store('table1', 'fork1', 'a', 'c', start_block = 3)
+    assert xx.lookup('table1', 'fork1', 'a')[0] == 'c'
+    xx.all_update_latest_master_block_num(2)
+    xx.store('table1', 'fork1', 'a', 'd', start_block = 2)
+    assert xx.lookup('table1', 'fork1', 'a')[0] == 'c'
+    assert xx.lookup('table1', 'fork1', 'a', end_block = 2)[0] == 'd'
+    xx.all_update_latest_master_block_num(1)
+    xx.store('table1', 'fork1', 'e','h',1)
+    xx.all_update_latest_master_block_num(2)
+    xx.store('table1', 'fork1', 'e','f',2)
+    xx.all_update_latest_master_block_num(3)
+    xx.store('table1', 'fork1', 'e','g',3)
+    assert tuple(xx.iterate_block_items('table1', 'fork1')) == (('a', 'c'), ('e', 'g'))
+    assert tuple(xx.iterate_block_items('table1', 'fork1', end_block = 1)) == (('a', 'b'), ('e', 'h'))
+    print ('PASSED_DB_BASIC')
 
 if __name__ == '__main__':
     test_temporal_table()
     test_temporal_forks()
+    test_temporal_db()

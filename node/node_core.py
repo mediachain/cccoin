@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from node_temporal import TemporalTable, test_temporal_table
+from node_temporal import TemporalDB, T_ANY_FORK
 from node_mc import MediachainQueue
 
 import bitcoin as btc
@@ -317,23 +317,25 @@ class CCCoinCore:
         
         ## {block_num: {blind_hash:(voter_id, item_id)}}
         
-        self.confirmed_unblinded_votes = TemporalTable()   ##
-        self.confirmed_unblinded_flags = TemporalTable()   ##
-        self.confirmed_min_lock_per_user = TemporalTable() ##
-        self.confirmed_lock_per_item = TemporalTable()     ##
-        self.confirmed_posts = TemporalTable()             ##
-
-        self.confirmed_post_voters = {}
-        
-        for direction in [0, -1, 1, 2, -2]:
-            self.confirmed_post_voters[direction] = TemporalTable()       ##
-
-        self.confirmed_owed_rewards_lock = TemporalTable() ## {user_id:amount_lock}
-        self.confirmed_paid_rewards_lock = TemporalTable() ## {user_id:amount_lock}
-
-        self.confirmed_user_id_to_username = TemporalTable() ## {user_id:username}
-        self.confirmed_username_to_user_id = TemporalTable() ## {user_id:username}
-        
+        self.tdb = TemporalDB(table_names = ['unblinded_votes',
+                                             'unblinded_flags',
+                                             'min_lock_per_user',
+                                             'lock_per_item',
+                                             'posts',
+                                             'post_voters_0',
+                                             'post_voters_-1',
+                                             'post_voters_1',
+                                             'post_voters_2',
+                                             'post_voters_-2',
+                                             'post_voters_0',
+                                             'paid_rewards_lock',
+                                             'owed_rewards_lock',
+                                             'user_id_to_username',
+                                             'username_to_user_id',
+                                             ],
+                              master_fork_name = 'BLOCKCHAIN_CONFIRMED',
+                              fork_names = self.cw.confirm_states.keys(),
+                              )
     
     def test_feed_round(self, actions):
         """
@@ -388,6 +390,7 @@ class CCCoinCore:
         self.cw.loop_once()        
     
     def process_lockup(self,
+                       received_via,
                        block_num,
                        recipient,
                        amount_tok,
@@ -400,17 +403,22 @@ class CCCoinCore:
 
         ## Update minimal LOCK at each block:
         
-        self.confirmed_min_lock_per_user.store(recipient,
-                                               min(final_lock,
-                                                   self.confirmed_min_lock_per_user.lookup(recipient,
-                                                                                           end_block = block_num,
-                                                                                           default = maxint,
-                                                                                           )[0],
-                                                   ),
-                                               block_num,
-                                               )
+        self.tdb.store('min_lock_per_user',
+                       received_via,
+                       recipient,
+                       min(final_lock,
+                           self.tdb.lookup('min_lock_per_user',
+                                           'BLOCKCHAIN_CONFIRMED',
+                                           recipient,
+                                           end_block = block_num,
+                                           default = maxint,
+                                           )[0],
+                           ),
+                       block_num,
+                       )
     
     def process_mint(self,
+                     received_via,
                      msg_block_num,
                      reward_tok,
                      reward_lock,
@@ -429,15 +437,19 @@ class CCCoinCore:
 
         event MintEvent(uint reward_tok, uint reward_lock, address recipient, uint block_num, uint rewards_freq, uint tot_tok, uint tot_lock, uint current_tok, uint current_lock, uint minted_tok, uint minted_lock);
         """
-        self.confirmed_paid_rewards_lock.store(user_id,
-                                               max(minted_lock,
-                                                   self.confirmed_paid_rewards_lock.lookup(user_id,
-                                                                                           end_block = doing_block_num,
-                                                                                           default = 0,
-                                                                                           )[0],
-                                                   ),
-                                               block_num,
-                                               )
+        self.tdb.store('paid_rewards_lock',
+                       received_via,
+                       user_id,
+                       max(minted_lock,
+                           self.tdb.lookup('paid_rewards_lock',
+                                           received_via,
+                                           user_id,
+                                           end_block = doing_block_num,
+                                           default = 0,
+                                           )[0],
+                           ),
+                       block_num,
+                       )
     
     def process_event(self, msg, *args, **kw):
         """
@@ -457,10 +469,12 @@ class CCCoinCore:
         
         elif msg['topics'][0] == '0x1f9e803538b221c54457d8f3287da41cc1cf9a49bfd8b838d15c3d86c3f4a704':
             ## event_sig_to_topic_id('MintEvent(uint,uint,address,uint,uint);')
+            ## TODO: convert msg to a bunch of args:
 	    return self.process_mint(msg, *args, **kw)
             
         elif msg['topics'][0] == '0xf9066a9b8e7a2ee9afab4894c00a535cc03e07674693fab39a2ba7119e626d0c':
             ## event_sig_to_topic_id('LockupTokEvent(address recipient, uint amount_tok, uint final_tok, uint final_lock)')
+            ## TODO: convert msg to a bunch of args:
             return self.process_lockuptok(msg, *args, **kw)
         else:
             assert False, ('UNKNOWN_TOPICS', msg['topics'])
@@ -625,8 +639,27 @@ class CCCoinCore:
 
             if payload_decoded['item_type'] == 'username':
                 
-                payload_inner['username']
-
+                print ('====USERNAME_REQUEST', received_via, payload_inner['username'])
+                
+                with self.tdb.the_lock:
+                    
+                    ## check that no one's confirmed it:
+                    
+                    tm = self.tdb.lookup('paid_rewards_lock',
+                                         'BLOCKCHAIN_CONFIRMED',
+                                         user_id,
+                                         default = False,
+                                         )[0]
+                    
+                    if tm is False:
+                        
+                        self.tdb.store('user_id_to_username',
+                                       received_via,
+                                       msg_data['pub'],
+                                       payload_inner['username'],
+                                       start_block = block_num,
+                                       )
+                
             elif payload_decoded['item_type'] == 'posts':
                 
                 print ('====COMMAND_UNBLIND_POSTS:', payload_inner)
@@ -664,10 +697,12 @@ class CCCoinCore:
                         post['status']['confirmed'] = True
                         post['status']['created_block_num'] = msg['blockNumber']
                         
-                        self.confirmed_posts.store(post['post_id'],
-                                                   post,
-                                                   msg['blockNumber'],
-                                                   )
+                        self.tdb.store('posts',
+                                       received_via,
+                                       post['post_id'],
+                                       post,
+                                       msg['blockNumber'],
+                                       )
 
                     ## Write to mediachain:
                     
@@ -693,19 +728,25 @@ class CCCoinCore:
                     
                     if received_via == 'BLOCKCHAIN_CONFIRMED':
 
-                        old_voters = self.confirmed_post_voters[vote['direction']].lookup(vote['item_id'],
-                                                                                          start_block = msg['blockNumber'],
-                                                                                          end_block = msg['blockNumber'],
-                                                                                          default = set(),
-                                                                                          )[0]
+                        assert vote['direction'] in [-2, -1, 0, 1, 2], vote['direction']
+                        
+                        old_voters = self.tdb.lookup('post_voters_' + str(int(vote['direction'])),
+                                                     received_via,
+                                                     vote['item_id'],
+                                                     start_block = msg['blockNumber'],
+                                                     end_block = msg['blockNumber'],
+                                                     default = set(),
+                                                     )[0]
 
                         if vote['direction'] in [-1, -2]:
                             try:
-                                self.confirmed_post_voters[vote['direction']].remove(vote['item_id'],
-                                                                                    creator_pub,
-                                                                                    start_block = msg['blockNumber'],
-                                                                                    as_set_op = True,
-                                                                                    )
+                                self.tdb.remove('post_voters_' + str(int(vote['direction'])),
+                                                received_via,
+                                                vote['item_id'],
+                                                creator_pub,
+                                                start_block = msg['blockNumber'],
+                                                as_set_op = True,
+                                                )
                             except KeyError:
                                 assert False, ('UNDO VOTE THAT DID NOT EXIST', vote)
 
@@ -715,38 +756,46 @@ class CCCoinCore:
                         the_db['votes'][(creator_pub, vote['item_id'])] = vote['direction']
 
                         if received_via == 'BLOCKCHAIN_CONFIRMED':
-                            self.confirmed_unblinded_votes.store((creator_pub, vote['item_id']),
-                                                                 vote['direction'],
-                                                                 msg['blockNumber'],
-                                                                 )
+                            self.tdb.store('unblinded_votes',
+                                           received_via,
+                                           (creator_pub, vote['item_id']),
+                                           vote['direction'],
+                                           msg['blockNumber'],
+                                           )
                         
                     elif vote['direction'] == 0:
                         try: del the_db['votes'][(creator_pub, vote['item_id'])]
                         except: pass
 
                         if received_via == 'BLOCKCHAIN_CONFIRMED':
-                            self.confirmed_unblinded_votes.store((creator_pub, vote['item_id']),
-                                                                 vote['direction'],
-                                                                 msg['blockNumber'],
-                                                                 )
+                            self.tdb.store('unblinded_votes',
+                                           received_via,
+                                           (creator_pub, vote['item_id']),
+                                           vote['direction'],
+                                           msg['blockNumber'],
+                                           )
 
                     elif vote['direction'] == 2:
                         the_db['flags'][(creator_pub, vote['item_id'])] = vote['direction']
                                                 
                         if received_via == 'BLOCKCHAIN_CONFIRMED':
-                            self.confirmed_unblinded_flags.store((creator_pub, vote['item_id']),
-                                                                 vote['direction'],
-                                                                 msg['blockNumber'],
-                                                                 )                        
+                            self.tdb.store('unblinded_flags',
+                                           received_via,
+                                           (creator_pub, vote['item_id']),
+                                           vote['direction'],
+                                           msg['blockNumber'],
+                                           )                        
                     elif vote['direction'] == -2:
                         try: del the_db['flags'][(creator_pub, vote['item_id'])]
                         except: pass
                         
                         if received_via == 'BLOCKCHAIN_CONFIRMED':
-                            self.confirmed_unblinded_flags.store((creator_pub, vote['item_id']),
-                                                                 vote['direction'],
-                                                                 msg['blockNumber'],
-                                                                 )
+                            self.tdb.store('unblinded_flags',
+                                           received_via,
+                                           (creator_pub, vote['item_id']),
+                                           vote['direction'],
+                                           msg['blockNumber'],
+                                           )
                         
                     else:
                         assert False, repr(vote['direction'])
@@ -768,8 +817,10 @@ class CCCoinCore:
         ## Compute block rewards, for sufficiently old actions:
         
         if (received_via == 'BLOCKCHAIN_CONFIRMED'):
-            
-            ### START REWARDS:
+
+            ##
+            #### START REWARDS:
+            ##
             
             #print 'RECEIVED_BLOCK', received_via
             #raw_input()
@@ -802,14 +853,18 @@ class CCCoinCore:
                 total_lock = 0
                 item_ids = set()
                 
-                for (voter_id, item_id), direction in self.confirmed_unblinded_votes.iterate_block_items(start_block = doing_block_num,
-                                                                                                         end_block = doing_block_num,
-                                                                                                         ):
+                for (voter_id, item_id), direction in self.tdb.iterate_block_items('unblinded_votes',
+                                                                                   'BLOCKCHAIN_CONFIRMED',
+                                                                                   start_block = doing_block_num,
+                                                                                   end_block = doing_block_num,
+                                                                                   ):
                     if voter_id not in voter_counts:
-                        voter_lock = self.confirmed_min_lock_per_user.lookup(voter_id,
-                                                                             end_block = doing_block_num - 1, ## Minus 1 for safety.
-                                                                             default = (voter_id in self.genesis_users and 1.0 or 0.0),
-                                                                             )[0]
+                        voter_lock = self.tdb.lookup('min_lock_per_user',
+                                                     received_via,
+                                                     voter_id,
+                                                     end_block = doing_block_num - 1, ## Minus 1 for safety.
+                                                     default = (voter_id in self.genesis_users and 1.0 or 0.0),
+                                                     )[0]
                         voter_lock_cache[voter_id] = voter_lock
                         total_lock += voter_lock
                     
@@ -822,9 +877,11 @@ class CCCoinCore:
                 total_lock_per_item = Counter()
                 lock_per_user = {}
                 
-                for (voter_id, item_id), direction in self.confirmed_unblinded_votes.iterate_block_items(start_block = doing_block_num,
-                                                                                                         end_block = doing_block_num,
-                                                                                                         ):
+                for (voter_id, item_id), direction in self.tdb.iterate_block_items('unblinded_votes',
+                                                                                   'BLOCKCHAIN_CONFIRMED',
+                                                                                   start_block = doing_block_num,
+                                                                                   end_block = doing_block_num,
+                                                                                   ):
                     ## Spread among all posts he voted on:
                     voter_lock = voter_lock_cache[voter_id] / float(len(voter_counts[voter_id]))
                     lock_per_user[voter_id] = voter_lock
@@ -839,20 +896,24 @@ class CCCoinCore:
                     old_voters[item_id] = []
                     
                     try:
-                        old_voters[item_id] = self.confirmed_post_voters[1].lookup(item_id,
-                                                                                   start_block = doing_block_num - 1,
-                                                                                   end_block = doing_block_num - 1,
-                                                                                   )[0]
+                        old_voters[item_id] = self.tdb.lookup('post_voters_1',  ## Upvoters only, for v1.
+                                                              'BLOCKCHAIN_CONFIRMED',
+                                                              item_id,
+                                                              start_block = doing_block_num - 1,
+                                                              end_block = doing_block_num - 1,
+                                                              )[0]
                     except KeyError:
                         pass
                     
                     ## Treat poster as just another voter:
 
                     post = False
-                    post = self.confirmed_posts.lookup(item_id,
-                                                       end_block = doing_block_num,
-                                                       default = False,
-                                                       )[0]
+                    post = self.tdb.lookup('posts',
+                                           received_via,
+                                           item_id,
+                                           end_block = doing_block_num,
+                                           default = False,
+                                           )[0]
                     if post is False:
                         ## TODO -
                         ## We got a vote for a post that's not yet fully confirmed...
@@ -884,7 +945,10 @@ class CCCoinCore:
 
                         ## Sponsor rewards for curation:
 
-                        post = self.confirmed_posts.lookup(item_id, end_block = doing_block_num)[0]
+                        post = self.tdb.lookup('posts',
+                                               received_via,
+                                               item_id,
+                                               end_block = doing_block_num)[0]
                         if 'sponsor' in post:
                             new_rewards_curator[post['sponsor']] += xrw
 
@@ -909,26 +973,24 @@ class CCCoinCore:
 
                     for user_id, reward in (new_rewards_curator + new_rewards_sponsor):
 
-                        self.confirmed_earned_rewards_lock.store(user_id,
-                                                                 reward + self.confirmed_earned_rewards_lock.lookup(user_id,
-                                                                                                                    end_block = doing_block_num,
-                                                                                                                    default = 0,
-                                                                                                                    )[0],
-                                                                 doing_block_num,
-                                                                 )
+                        with self.tdb.the_lock:
+                            self.tdb.store('earned_rewards_lock',
+                                           user_id,
+                                           reward + self.tdb.lookup('earned_rewards_lock',
+                                                                    received_via,
+                                                                    user_id,
+                                                                    end_block = doing_block_num,
+                                                                    default = 0,
+                                                                    )[0],
+                                           doing_block_num,
+                                           )
 
-                """
-                - Schedule payouts to begin every 300 blocks.
-                - When rewards time arrives:
-                  + take snapshot of earned rewards. total_earned@-10 - total_confirmed@-20
-                  + submit rewards_lock to blockchain
-                - Wait 10 blocks.
-                - If rewards_lock is successful, pay out.
-                """
                 
                 assert received_via == 'BLOCKCHAIN_CONFIRMED', confirm_level
-                
-                ## Occasionally distribute rewards:
+
+                ##
+                #### Occasionally distribute rewards:
+                ##
                 
                 if (self.mode == 'rewards') and (block_number % self.rw['REWARDS_FREQUENCY']) == (self.rw['REWARDS_FREQUENCY'] - 1):
                     
@@ -938,14 +1000,18 @@ class CCCoinCore:
                     
                     net_earned = 0.0
                     
-                    for user_id, earned_lock in self.confirmed_earned_rewards_lock.iterate_block_items(start_block = old_rewards_block_num,
-                                                                                                       end_block = old_rewards_block_num,
-                                                                                                       ):
+                    for user_id, earned_lock in self.tdb.iterate_block_items('earned_rewards_lock',
+                                                                             'BLOCKCHAIN_CONFIRMED',
+                                                                             start_block = old_rewards_block_num,
+                                                                             end_block = old_rewards_block_num,
+                                                                             ):
                         
-                        paid_lock = self.confirmed_paid_rewards_lock.lookup(user_id,
-                                                                            end_block = old_rewards_block_num,
-                                                                            default = 0.0,
-                                                                            )[0]
+                        paid_lock = self.tdb.lookup('paid_rewards_lock',
+                                                    'BLOCKCHAIN_CONFIRMED',
+                                                    user_id,
+                                                    end_block = old_rewards_block_num,
+                                                    default = 0.0,
+                                                    )[0]
                         
                         net_earned += float(max(0.0, earned_lock - paid_lock))
                     
@@ -1017,14 +1083,15 @@ class CCCoinCore:
             #print "the_db['scores']", the_db['scores']
             #print 'self.blind_lookup', self.blind_lookup
 
-            print 'confirmed_unblinded_votes',self.confirmed_unblinded_votes.hh
-            print 'confirmed_unblinded_flags',self.confirmed_unblinded_flags.hh
-            print 'confirmed_min_lock_per_user', self.confirmed_min_lock_per_user.hh
-            print 'confirmed_lock_per_item', self.confirmed_lock_per_item.hh
-            print 'confirmed_posts', self.confirmed_posts.hh
-            print 'confirmed_post_voters[1]', self.confirmed_post_voters[1].hh
-            print 'confirmed_owed_rewards_lock', self.confirmed_owed_rewards_lock.hh
-            print 'confirmed_paid_rewards_lock', self.confirmed_paid_rewards_lock.hh
+            if False:
+                print 'confirmed_unblinded_votes',self.confirmed_unblinded_votes.hh
+                print 'confirmed_unblinded_flags',self.confirmed_unblinded_flags.hh
+                print 'confirmed_min_lock_per_user', self.confirmed_min_lock_per_user.hh
+                print 'confirmed_lock_per_item', self.confirmed_lock_per_item.hh
+                print 'confirmed_posts', self.confirmed_posts.hh
+                print 'confirmed_post_voters[1]', self.confirmed_post_voters[1].hh
+                print 'confirmed_owed_rewards_lock', self.confirmed_owed_rewards_lock.hh
+                print 'confirmed_paid_rewards_lock', self.confirmed_paid_rewards_lock.hh
 
             print 'feed_history:'
             for c, xx in enumerate(self.feed_history):
@@ -1224,6 +1291,11 @@ class CCCoinCore:
         
         if filter_users:
             rr = []
+            #for post_id, post in self.tdb.iterate_block_items('earned_rewards_lock',
+            #                                                  T_ANY_FORK,
+            #                                                  start_block = old_rewards_block_num,
+            #                                                  end_block = old_rewards_block_num,
+            #                                                  ):
             for xx in self.posts_by_post_id.itervalues():
                 if xx['status']['creator_address'] in filter_users:
                     rr.append(xx)
@@ -1251,7 +1323,7 @@ class CCCoinCore:
         
         rrr = {'success':True, 'items':rr, 'sort':sort_by}
 
-        print 'GOT', rrr
+        print ('GOT', len(rrr))
         
         return rrr
 
