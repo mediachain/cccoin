@@ -28015,8 +28015,9 @@ module.exports = exports = {
     if (typeof tos_rejected_cb !== 'function') {
       tos_rejected_cb = () => {}
     }
+    const tos_modal = $('#tos_modal');
 
-    $('#tos_modal').modal({
+    tos_modal.modal({
       dismissible: false, // need to explicitly agree / disagree
       opacity: .5, // Opacity of modal background
       inDuration: 300, // Transition in duration
@@ -28024,8 +28025,17 @@ module.exports = exports = {
       startingTop: '4%', // Starting top style attribute
       endingTop: '10%', // Ending top style attribute
       ready: function () {
-        $('#tos_form').submit(() => {
+        $('#tos_form').submit((e) => {
+          e.preventDefault();
+
+          const $error = $('#tos_error_text');
+          const agreed = $('#tos_agree_checkbox').is(':checked');
+          if (!agreed) {
+            display_error($error, 'ERROR: You must agree to the terms of service before proceeding');
+            return false;
+          }
           tos_accepted_cb();
+          tos_modal.modal('close');
         })
 
         $('#tos_reject_button').on('click', () => {
