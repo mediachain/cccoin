@@ -167,6 +167,7 @@
 			color: #222222;
 			min-height: 150px;
 		}
+
 	</style>
 
 </head>
@@ -375,41 +376,46 @@
 
 				<div class="row modal-form-row">
 					<div class="input-field col s12">
-						<input id="image_url" type="text" class="validate">
-						<label for="image_url">Direct Image URL</label>
-					</div>
-				</div>
-
-				<div class="row modal-form-row" style="display:none;">
-					<div class="input-field col s12">
-						<select class="black-text">
-							<option value="" disabled selected>Choose your option</option>
-							<option value="1">None (All rights reserved)</option>
-							<option value="2">Public Domain Work</option>
-							<option value="3">Public Domain Dedication (CC0)</option>
-							<option value="4">Attribution-NonCommercial-ShareAlike Creative Commons</option>
-							<option value="5">Attribution-NonCommercial Creative Commons</option>
-							<option value="6">Attribution-NonCommercial-NoDerivs Creative Commons</option>
-							<option value="7">Attribution Creative Commons</option>
-							<option value="8">Attribution-ShareAlike Creative Commons</option>
-							<option value="9">Attribution-NoDerivs Creative Commons</option>
-						</select>
-						<label>License</label>
+						<input id="image_title" type="text" class="xvalidate">
+						<label for="image_title">Title</label>
 					</div>
 				</div>
 
 
-				<div class="row modal-form-row" style="display:none;">
+				<div class="row modal-form-row" >
 					<div class="input-field col s12">
-						<input id="artist_name" type="text" class="validate">
+						<input id="artist_name" type="text" class="xvalidate">
 						<label for="artist_name">Artist Name</label>
 					</div>
 				</div>
 
-				<div class="row">
+				<div class="row modal-form-row">
 					<div class="input-field col s12">
-						<input id="image_title" type="text" class="validate">
-						<label for="image_title">Title</label>
+						<select id="submit_licence_type" class="black-text icons xvalidate">
+							<option value="" disabled selected>Choose your option</option>
+							<option value="CC0">CC0 - Public Domain</option>
+							<option value="BY">CC-BY - Attribution</option>
+							<option value="BY-SA">CC-BY-SA - Attribution + Share-Alike</option>
+							<option value="BY-NC">CC-BY-NC - Attribution + Non-Commercial</option>
+							<option value="BY-ND">CC-BY-ND - Attribution + No Derivatives</option>
+							<option value="BY-NC-SA">CC-BY-NC-SA - Attribution + Non-Commercial + Share-Alike</option>
+							<option value="BY-NC-ND">CC-BY-NC-ND - Attribution + Non-Commercial + No Derivatives</option>
+						</select>
+						<label for="submit_licence_type">License</label>
+					</div>
+				</div>
+
+				<div class="row modal-form-row">
+					<div class="input-field col s12">
+						<input id="image_url" type="text" class="xvalidate">
+						<label for="image_url">Direct Image URL</label>
+					</div>
+				</div>
+
+				<div class="row modal-form-row">
+					<div class="input-field">
+						<input type="checkbox" id="submit_licence_agreed" class="xvalidate">
+						<label for="submit_licence_agreed">By submitting this image you assert it is yours to license or that you are posting it in compliance with an existing Creative Commons license.</label>
 					</div>
 				</div>
 
