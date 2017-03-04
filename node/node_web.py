@@ -564,7 +564,7 @@ class handle_front(BaseHandler):
         
         num_items = len(the_items['items'])
         
-        print ('the_items', the_items)
+        #print ('the_items', the_items)
         
         self.render_template('index.html',locals())
         

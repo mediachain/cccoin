@@ -83,11 +83,12 @@ class TemporalTable:
             if key not in self.hh:
                 if self.process_safe:
                     self.hh[key] = self.manager.dict()
-                    #self.hh[key][start_block] = value
-                    ## BUG1:
-                    tm = self.hh[key]
-                    tm[start_block] = value
-                    self.hh[key] = tm                    
+                    if not as_set_op:
+                        #self.hh[key][start_block] = value
+                        ## BUG1:
+                        tm = self.hh[key]
+                        tm[start_block] = value
+                        self.hh[key] = tm                    
                 else:
                     self.hh[key] = {}
 
@@ -105,6 +106,8 @@ class TemporalTable:
                 #self.hh[key][start_block][value] = True ## Must have already setup in previous call.
                 tm = self.hh[key]
                 tm2 = tm[start_block]
+                #print 'aa', key ,start_block, self.hh
+                #print 'hh', self.hh[key][start_block]
                 tm2[value] = True ## Must have already setup in previous call.
                 tm[start_block] = tm2
                 self.hh[key] = tm
@@ -188,6 +191,11 @@ class TemporalTable:
                     return default
 
             assert False,'should not reach'
+
+    def iterate_set_depth(self, start_block = -maxint, end_block = 'latest'):
+        ## TODO
+        ## [x.keys() for x in xx.tables['table2'].forks['fork1'].hh['z'].values()]
+        pass
             
     def iterate_block_items(self, start_block = -maxint, end_block = 'latest'):
         """ Iterate latest version of all known keys, between start_block and end_block. """
@@ -270,9 +278,9 @@ class TemporalForks:
         
         self.master_fork_name = master_fork_name
         self.max_non_master_age = max_non_master_age
-        self.latest_master_block_num = manager.Value('i', -maxint)
+        self.latest_master_block_num = self.manager.Value('i', -maxint)
         
-        self.the_lock = manager.RLock()
+        self.the_lock = self.manager.RLock()
 
         
     def update_latest_master_block_num(self, block_num):
@@ -313,7 +321,7 @@ class TemporalForks:
         with self.the_lock:
             
             if fork_name != self.T_ANY_FORK:
-                assert fork_name in self.forks
+                assert fork_name in self.forks, repr(fork_name)
                 return self.forks[fork_name].lookup(key = key,
                                                     start_block = start_block,
                                                     end_block = end_block,
@@ -345,7 +353,6 @@ class TemporalForks:
                                                  end_block = end_block,
                                                  default = KeyError,
                                                  )
-                    print 'FORK', fork_name, x_start_block, val, block_num
                 except KeyError:
                     continue
                 
@@ -360,23 +367,25 @@ class TemporalForks:
             
             return biggest_val, biggest_num
     
-    def iterate_block_items(self, fork_name, *args, **kw):
+    def iterate_block_items(self, fork_name, start_block = -maxint, end_block = 'latest'):
         with self.the_lock:
             
             if fork_name != self.T_ANY_FORK:
-                assert fork_name in self.forks
-                for xx in self.forks[fork_name].iterate_block_items(*args, **kw):
+                assert fork_name in self.forks, repr(fork_name)
+                for xx in self.forks[fork_name].iterate_block_items(start_block, end_block):
                     yield xx
+                return
             
             do_keys = set()
             
-            for fork_name, fork in self.forks.items():                
+            for fork in self.forks.values():                
                    do_keys.update(fork.current_latest.keys()) 
             
+                   
             for kk in do_keys:
                 try:
-                    rr, bn = self.lookup(kk, start_block, end_block)
-                except:
+                    rr, bn = self.lookup(fork_name, kk, start_block = start_block, end_block = end_block)
+                except KeyError:
                     ## not yet present in db
                     continue
                 yield (kk, rr)
@@ -384,7 +393,7 @@ class TemporalForks:
     def prune_historical(self, fork_name, *args, **kw):
         with self.the_lock:
             if fork_name != self.T_ANY_FORK:
-                assert fork_name in self.forks
+                assert fork_name in self.forks, repr(fork_name)
                 return self.forks[fork_name].prune_historical(*args, **kw)
 
             for fork_name, fork in self.forks.items():                
@@ -393,7 +402,7 @@ class TemporalForks:
     def wipe_newer(self, fork_name, *args, **kw):
         with self.the_lock:
             if fork_name != self.T_ANY_FORK:
-                assert fork_name in self.forks
+                assert fork_name in self.forks, repr(fork_name)
                 return self.forks[fork_name].wipe_newer(*args, **kw)
 
             for fork_name, fork in self.forks.items():                
@@ -429,12 +438,18 @@ class TemporalDB:
                 print ('HANDLE_ALL', x_func_name, args, kw)
                 for table_name, table in self.tables.iteritems():
                     getattr(self.tables[table_name], x_func_name)(*args, **kw)
+        
+        elif func_name.startswith('iterate_'):
+            ## Apply to all TemporalForks. Note, not for functions with return values:
+            def handle(table_name, *args, **kw):
+                print ('HANDLE_ITER', table_name, func_name, args, kw)
+                return list(getattr(self.tables[table_name], func_name)(*args, **kw))
         else:
             ## Proxy the rest to individual TemporalForks:
             def handle(table_name, *args, **kw):
-                print ('HANDLE', func_name, table_name, args, kw)
+                #print ('HANDLE', func_name, table_name, args, kw)
                 r = getattr(self.tables[table_name], func_name)(*args, **kw)
-                print ('DONE_HANDLE', r)
+                #print ('DONE_HANDLE', r)
                 return r
             
         return handle
@@ -495,7 +510,7 @@ def test_temporal_forks():
 
 def test_temporal_db():
     print ('START test_temporal_db()')
-    xx = TemporalDB(table_names = ['table1'], master_fork_name = 'fork1', fork_names = ['fork1', 'fork2'])
+    xx = TemporalDB(table_names = ['table1', 'table2'], master_fork_name = 'fork1', fork_names = ['fork1', 'fork2'])
     xx.all_update_latest_master_block_num(1)
     xx.store('table1', 'fork1', 'a', 'b', start_block = 1)
     assert xx.lookup('table1', 'fork1', 'a')[0] == 'b'
@@ -514,8 +529,20 @@ def test_temporal_db():
     xx.store('table1', 'fork1', 'e','g',3)
     assert tuple(xx.iterate_block_items('table1', 'fork1')) == (('a', 'c'), ('e', 'g'))
     assert tuple(xx.iterate_block_items('table1', 'fork1', end_block = 1)) == (('a', 'b'), ('e', 'h'))
+    assert tuple(xx.iterate_block_items('table1', T_ANY_FORK, end_block = 1)) == (('a', 'b'), ('e', 'h'))
+    
+    xx.store('table2', 'fork1', 'z', '1', start_block = 55, as_set_op = True,)
+    xx.store('table2', 'fork1', 'z', '2', start_block = 56, as_set_op = True,)
+    xx.store('table2', 'fork1', 'z', '3', start_block = 57, as_set_op = True,)
+    
+    ## {'z': {56: {'2': True}, 57: {'3': True}, 55: {'1': True}}}
+    #print 'zz', [x.keys() for x in xx.tables['table2'].forks['fork1'].hh['z'].values()]
+    #print 'zz', xx.lookup('table2','fork1','z',default = set())[0]
+    
     print ('PASSED_DB_BASIC')
 
+    
+    
 if __name__ == '__main__':
     test_temporal_table()
     test_temporal_forks()

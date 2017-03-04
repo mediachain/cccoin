@@ -719,12 +719,12 @@ class CCCoinCore:
                         post['status']['created_block_num'] = msg['blockNumber']
                         post['status']['created_time'] = self.block_details.get(msg['blockNumber'], {'timestamp':int(time())})['timestamp']
                         
-                        self.tdb.store('posts',
-                                       received_via,
-                                       post['post_id'],
-                                       post,
-                                       msg['blockNumber'],
-                                       )
+                    self.tdb.store('posts',
+                                   received_via,
+                                   post['post_id'],
+                                   post,
+                                   msg['blockNumber'],
+                                   )
 
                     ## Write to mediachain:
                     
@@ -767,18 +767,26 @@ class CCCoinCore:
                     ## Record {item_id -> voters} historic lookup:
 
                     print ('MSG', received_via, msg)
+
+                    #self.tdb.store('post_voters_' + str(int(vote['direction'])),
+                    #               received_via,
+                    #               vote['item_id'],
+                    #               start_block = msg['blockNumber'],
+                    #               as_set_op = True,
+                    #               )[0]
                     
                     if received_via == 'BLOCKCHAIN_CONFIRMED':
 
                         assert vote['direction'] in [-2, -1, 0, 1, 2], vote['direction']
                         
-                        old_voters = self.tdb.lookup('post_voters_' + str(int(vote['direction'])),
-                                                     received_via,
-                                                     vote['item_id'],
-                                                     start_block = msg['blockNumber'],
-                                                     end_block = msg['blockNumber'],
-                                                     default = set(),
-                                                     )[0]
+                        #old_voters = self.tdb.lookup('post_voters_' + str(int(vote['direction'])),
+                        #                             received_via,
+                        #                             vote['item_id'],
+                        #                             start_block = msg['blockNumber'],
+                        #                             end_block = msg['blockNumber'],
+                        #                             default = set(),
+                        #                             as_set_op = True,
+                        #                             )[0]
 
                         if vote['direction'] in [-1, -2]:
                             try:
@@ -934,15 +942,17 @@ class CCCoinCore:
                 for item_id in item_ids:
                     old_voters[item_id] = []
                     
-                    try:
-                        old_voters[item_id] = self.tdb.lookup('post_voters_1',  ## Upvoters only, for v1.
-                                                              'BLOCKCHAIN_CONFIRMED',
-                                                              item_id,
-                                                              start_block = doing_block_num - 1,
-                                                              end_block = doing_block_num - 1,
-                                                              )[0]
-                    except KeyError:
-                        pass
+                    #try:
+                    #    old_voters[item_id] = self.tdb.lookup('post_voters_1',  ## Upvoters only, for v1.
+                    #                                          'BLOCKCHAIN_CONFIRMED',
+                    #                                          item_id,
+                    #                                          start_block = doing_block_num - 1,
+                    #                                          end_block = doing_block_num - 1,
+                    #                                          #as_set_op = True,
+                    #                                          default = set()
+                    #                                          )[0]
+                    #except KeyError:
+                    #    pass
                     
                     ## Treat poster as just another voter:
 
@@ -1332,30 +1342,51 @@ class CCCoinCore:
         
         if filter_users:
             rr = []
-            #for xx in self.posts_by_post_id.itervalues():
-            for post_id, post in self.tdb.iterate_block_items('earned_rewards_lock',
+            #for post in self.posts_by_post_id.itervalues():
+            for post_id, post in self.tdb.iterate_block_items('posts',
                                                               T_ANY_FORK,
-                                                              start_block = old_rewards_block_num,
-                                                              end_block = old_rewards_block_num,
                                                               ):
-                if xx['status']['creator_address'] in filter_users:
-                    rr.append(xx)
+                if (post['status']['creator_address'] in filter_users) or (post['status']['creator_address'][:20] in filter_users):
+                    rr.append(post)
                     
         elif filter_ids:
             rr = []
             for xx in filter_ids:
-                rr.append(self.posts_by_post_id.get(xx))
+                #rr = self.posts_by_post_id.get(xx, False)
+                post = self.tdb.lookup('posts',
+                                       T_ANY_FORK,
+                                       xx,
+                                       default = False
+                                       )[0]
+                if post:
+                    rr.append(post)
         
         else:
-            rr = self.posts_by_post_id.values()
+            #rr = self.posts_by_post_id.values()
+            rr = []
+            for post_id, post in self.tdb.iterate_block_items('posts',
+                                                              T_ANY_FORK,
+                                                              ):
+                rr.append(post)
         
         ## Use highest score from any consensus state:
         
-        for via in ['BLOCKCHAIN_CONFIRMED', 'DIRECT']:
-            the_db = self.DBL['all_dbs'].get(via, [])
-            for post in rr:
-                post['status']['score'] = max(the_db['scores'].get(post['post_id'], 0) + 1, post['status'].get('score', 1))
-
+        #the_db = self.DBL['all_dbs'].get(via, [])
+        for post in rr:
+            #post['status']['score'] = max(the_db['scores'].get(post['post_id'], 0) + 1, post['status'].get('score', 1))
+            #post['status']['score'] = len(self.tdb.lookup('post_voters_' + str(1),
+            #                                              T_ANY_FORK,
+            #                                              post['post_id'],
+            #                                              default = set(),
+            #                                              as_set_op = True,
+            #                                              )[0])
+            post['status']['score']  = self.tdb.lookup('scores',
+                                                      T_ANY_FORK,
+                                                      post['status']['creator_pub'] + '|' + post['post_id'],
+                                                      default = 0,
+                                                      )[0]
+            print ('SCORE', post['status']['score'])
+        
         ## Sort:
         
         rr = list(sorted([(x['status'][sort_by],x) for x in rr], reverse=True))

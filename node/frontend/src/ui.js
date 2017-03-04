@@ -193,8 +193,11 @@ module.exports = exports = {
     $('.materialboxed').materialbox();
     $('select').material_select();
 
-
+    
     // savvior masonry grid init
+
+    $('.card_item').css('display','block'); // hack to avoid startup thrashing, for now.
+      
     savvior.init('#card-grid', {
       "screen and (max-width: 40em)": { columns: 1 },
       "screen and (min-width: 40em) and (max-width: 60em)": { columns: 2 },
@@ -350,7 +353,7 @@ module.exports = exports = {
            return;
          }
         else {
-           $urlField.focus();
+           $titleField.focus();
          }
       },
       //complete: function() { alert('Closed'); } // Callback for Modal close

@@ -61,6 +61,7 @@
 		.size-1of3 { width: 33.33333%; }
 		.size-1of4 { width: 25%; }
 
+		.card_item{display:none;}
 		.card { margin: 5px; overflow: hidden; }
 		.card-image{height:auto;overflow:hidden;background:#000}
 		.card-title {display:none;pointer-events: none;font-size:20px !important;padding:24px 5px !important;}
@@ -179,6 +180,7 @@
 			flex: 1 0 auto;
 		}
 
+		
 	</style>
 
 </head>
@@ -223,7 +225,7 @@
 				<ul id="dropdown_loggedin"
 					class="dropdown-content black-text">
 					<!-- <li><a href="#!">one</a></li> -->
-					<li><a href="#!" class="black-text">Settings</a></li>
+					<!-- <li><a href="#!" class="black-text">Settings</a></li> -->
 					<li class="divider"></li>
 					<li><a href="#!" class="black-text" onclick="do_logout(); return false;">Logout</a></li>
 				</ul>
@@ -433,7 +435,7 @@
 				<div class="row modal-form-row">
 					<div class="input-field">
 						<input type="checkbox" id="image_licence_agreed" class="xvalidate">
-						<label for="image_licence_agreed">I assert this image is mine to license or that I am posting it in compliance with an existing Creative Commons license.</label>
+						<label for="image_licence_agreed" class="black-text">I assert this image is mine to license or that I am posting it in compliance with an existing Creative Commons license.</label>
 					</div>
 				</div>
 
