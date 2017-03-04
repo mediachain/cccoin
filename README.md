@@ -2,7 +2,7 @@
 
 **CCCoin** - Image creation, curation, and sharing incentivization network.
 
-## [Join CCCoin Now](http://52.168.175.195)
+## [Join CCCoin Now](https://cccoin.mediachain.io/)
 
 |          |             | 
 | ------------- | :------------- | 
@@ -49,7 +49,7 @@ CCCoin aims to achieve all of the properties expected from a dApp,
 
 ## Getting Started
 
-Visit [this web node](http://52.168.175.195) on any regular web browser to get started right away!
+Visit [this web node](https://cccoin.mediachain.io/) on any regular web browser to get started right away!
 
 Or run your own web node,
 
