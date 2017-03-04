@@ -97,8 +97,6 @@ class ContractWrapper:
                 self.is_deployed = True
             elif the_code:
                 self.deploy()
-
-        self.block_details = {}
                 
                 
     def check_anything_deployed(self, address):
@@ -200,18 +198,7 @@ class ContractWrapper:
         
         assert self.is_deployed, 'Must deploy contract first.'
         self.latest_block_num = self.c.eth_blockNumber()
-        
-        if self.latest_block_num not in self.block_details:
-
-            rh = self.c.eth_getBlockByNumber(self.latest_block_num)
-
-            ## Strip down to just a couple fields:
-            
-            xh = {'timestamp':ethereum.utils.parse_int_or_hex(rh['timestamp'])}
-            
-            self.block_details[self.latest_block_num] = xh
-            
-        
+         
         for do_state, state_num_blocks in self.confirm_states.items():
             
             from_block = self.latest_done_block + 1 - state_num_blocks

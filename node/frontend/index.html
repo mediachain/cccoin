@@ -307,6 +307,8 @@
 			  <span id="vote_{{ the_item['post_id'] }}_pow">
 			    {{ '%.2f' % (handler.cccoin.tdb.lookup('scores',T_ANY_FORK, the_item['status']['creator_pub'] + '|' + the_item['post_id'],default = 0)[0]) }}
 			  </span> CCC
+			  {% comment the_item['status'] %}
+			  {% comment repr(handler.cccoin.block_details)[:150] %}
 			  {% comment handler.cccoin.cw.block_details.get(the_item['status']['created_block_num']) %}
 			  <i class="trend-up material-icons red-text text-lighten-1" style="font-size:15px;display:none;">arrow_upward</i>
 			  <i class="trend-down material-icons blue-text text-lighten-1" style="font-size:15px;display:none;">arrow_downward</i>
@@ -585,21 +587,20 @@
 </div>
 
 <footer class="footer-copyright">
-	<div class="container">
-		<div class="row valign-wrapper">
-			<div class="col s6 valign-wrapper">
-					<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/">
-						<img alt="Creative Commons License" src="https://i.creativecommons.org/l/by-sa/4.0/88x31.png">
-					</a>
-					<span style="margin-left: 15px;">© Mediachain Labs</span>
-			</div>
-			<div class="col s6 valign-wrapper">
-				<a href="/terms-of-service" style="margin-left: 15px;">Terms of Service</a>
-				<a href="/privacy-policy" style="margin-left: 15px;">Privacy Policy</a>
-				<a href="/copyright-policy" style="margin-left: 15px;">DMCA Copyright Policy</a>
-			</div>
-		</div>
-	</div>
+  <div class="container">
+    <div class="row valign-wrapper">
+      <div class="col s12 center-align" style="font-size: .9rem;">
+	<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/">
+	  <img alt="Creative Commons License" src="https://i.creativecommons.org/l/by-sa/4.0/88x31.png">
+	</a>
+	<span style="margin-left: 15px;">© Mediachain Labs</span>
+	<a href="/terms-of-service" style="margin-left: 15px;" class="red-text">Terms of Service</a>
+	<a href="/privacy-policy" style="margin-left: 15px;" class="red-text">Privacy Policy</a>
+	<a href="/copyright-policy" style="margin-left: 15px;" class="red-text">DMCA Copyright Policy</a>
+      </div>
+      
+    </div>
+  </div>
 </footer>
 </body>
 </html>

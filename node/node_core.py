@@ -310,6 +310,9 @@ class CCCoinCore:
         
         self.latest_block_number = -1
 
+        ####
+        
+        self.block_details = {}
         
         #### STATE SNAPSHOTS FOR OLD BLOCKS:
 
@@ -555,6 +558,17 @@ class CCCoinCore:
             
         else:
             assert False, repr(received_via)
+
+
+        if msg['blockNumber'] not in self.block_details:
+
+            rh = self.cw.c.eth_getBlockByNumber(msg['blockNumber'])
+
+            ## Strip down to just a couple fields:
+            
+            xh = {'timestamp':ethereum.utils.parse_int_or_hex(rh['timestamp'])}
+            
+            self.block_details[msg['blockNumber']] = xh
         
         print ('====PROCESS_EVENT:', received_via)
         print json.dumps(msg, indent=4)
@@ -703,7 +717,7 @@ class CCCoinCore:
                         
                         post['status']['confirmed'] = True
                         post['status']['created_block_num'] = msg['blockNumber']
-                        post['status']['created_time'] = self.cw.block_details.get(msg['blockNumber'] - 1, {'timestamp':int(time())})['timestamp']
+                        post['status']['created_time'] = self.block_details.get(msg['blockNumber'], {'timestamp':int(time())})['timestamp']
                         
                         self.tdb.store('posts',
                                        received_via,
