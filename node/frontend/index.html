@@ -6,8 +6,9 @@
 	<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script> -->
 	<!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.css"> -->
 
-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.98.0/css/materialize.min.css">
-	<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+	<link href="{{ handler.static_url('material-icons.css') }}" rel="stylesheet">
+
+	<link rel="stylesheet" href="{{ handler.static_url('materialize.min.css') }}">
 
 	<script src="{{ handler.static_url('main-bundle.js') }}"></script>
 
@@ -635,8 +636,8 @@
 	  <img alt="Creative Commons License" src="https://i.creativecommons.org/l/by-sa/4.0/88x31.png">
 	</a>
 	<span style="margin-left: 15px;">© Mediachain Labs</span>
-	<a href="/terms-of-service" style="margin-left: 15px;" class="red-text">Terms of Service</a>
-	<a href="/privacy-policy" style="margin-left: 15px;" class="red-text">Privacy Policy</a>
+	<a href="{{ handler.static_url('terms-of-service.html') }}" style="margin-left: 15px;" class="red-text">Terms of Service</a>
+	<a href="{{ handler.static_url('privacy-policy.html') }}" style="margin-left: 15px;" class="red-text">Privacy Policy</a>
 	<a href="/copyright-policy" style="margin-left: 15px;" class="red-text">DMCA Copyright Policy</a>
       </div>
       
