@@ -1398,6 +1398,17 @@ class CCCoinCore:
                                       [rr],
                                       gas_limit = self.rw['MAX_GAS_DEFAULT'],
                                       )
+
+    def get_vote_history(self,
+                         post_id,
+                         ):
+        rr = {}
+        for fork_name in self.cw.confirm_states:
+            for block_num, user_id_is_up in self.tdb.tables['post_voters_1'].forks[fork_name].hh.get(post_id,{}).items():
+                if block_num not in rr:
+                    rr[block_num] = {}
+                rr[block_num].update(user_id_is_up.items())
+        return sorted(rr.items(), reverse = True)
         
     def get_sorted_posts(self,
                          offset = 0,

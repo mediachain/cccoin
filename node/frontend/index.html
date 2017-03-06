@@ -334,21 +334,38 @@
 			<table style="border-top:1px solid #eee">
 			  <tbody>
 			    
-			    {% comment handler.cccoin.tdb.iterate_block_items('post_voters_1', T_ANY_FORK) %}
-			      {% for block_num,xx in handler.cccoin.tdb.tables['post_voters_1'].forks['DIRECT'].hh.get(the_item['post_id'],{}).items() %}
+			    {% set hist = handler.cccoin.get_vote_history(the_item['post_id']) %}
+			    {% set cnt = 0 %}
+			      {% for cc, (block_num,xx) in enumerate(hist) %}
 			      {% for user_id, is_up in xx.items() %}
- 			      <tr id="event_1">		
- 				<td class="blocknum"><a href="" class="black-text">#{{ block_num }}</a></td>		
- 				<td style="vertical-align:top;">		
- 				  <a href="" class="{{ is_up and 'red' or 'black'}}-text text-accent-4"><i class="material-icons">thumb_{{ is_up and 'up' or 'down'}}</i></a>		
- 				  from		
- 				  <a href="" class="red-text text-accent-4">{{ handler.cccoin.tdb.lookup('user_id_to_username', T_ANY_FORK, user_id, default = 'pending_'+the_item['status']['creator_address'][:10])[0] }}</a>
+			    {% set cnt += 1 %}
+ 			      <tr class="hist_{{ the_item['post_id'] }}" style="{{ cnt > 5 and 'display:none;' or '' }}">
+ 				<td style="width:32px;"><a href="" class="black-text">#{{ block_num }}</a></td>		
+ 				<td style="vertical-align:top;width:32px;">				  
+ 				  <a href=""
+				     class="{{ is_up and 'red' or 'black'}}-text text-accent-4"><i class="material-icons">thumb_{{ is_up and 'up' or 'down'}}</i></a>		
+				</td>
+				<td style="vertical-align:middle;">
+				  from		
+ 				  <a href="/?user={{ user_id[:20] }}"
+				     class="red-text text-accent-4">{{ handler.cccoin.tdb.lookup('user_id_to_username', T_ANY_FORK, user_id, default = 'pending_'+user_id[:10])[0] }}</a>
+				  {{ htime_ago(handler.cccoin.block_details.get(block_num,{'timestamp':time()})['timestamp']) }}
  				</td>		
  			      </tr>
 			      {% end %}
 			      {% end %}
+			    {% if len(hist) > 5 %}
+			    <tr>
+			      <td colspan="3">
+				<a href="#"
+				   class="red-text"
+				   onclick="$('.hist_{{ the_item['post_id'] }}').show();return false;">more...</a>
+			      </td>
+			    </tr>
+			    {% end %}
+			      
 			  </table>
-
+			
 									</div>
 								</div>
 							</div>
