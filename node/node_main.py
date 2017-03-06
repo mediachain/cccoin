@@ -13,8 +13,8 @@ REWARDS_ACCOUNT = False
 SUPER_FLAGGER = False
 
 ## See cccoin/docs/nginx_config for nginx setup, or set to False to disable.:
-#IMAGE_PROXY_PATH = '/images/'
-IMAGE_PROXY_PATH = False
+IMAGE_PROXY_PATH = '/images/'
+#IMAGE_PROXY_PATH = False
 
 DATA_DIR = 'build_contracts/'
 
