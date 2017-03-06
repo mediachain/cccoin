@@ -389,7 +389,8 @@ class Application(tornado.web.Application):
 
         self.the_cccoin = cccoin
         self.image_proxy_path = image_proxy_path
-        
+        static_dir = join(dirname(__file__), 'frontend', 'static')
+
         handlers = [(r'/',handle_front,),
                     (r'/demo',handle_front,),
                     (r'/login_1',handle_login_1,),
@@ -401,10 +402,11 @@ class Application(tornado.web.Application):
                     (r'/api',handle_api,),
                     (r'/echo',handle_echo,),
                     #(r'.*', handle_notfound,),
+                    (r'/fonts/(.*)', tornado.web.StaticFileHandler, {'path': join(static_dir, 'fonts')}),
                     ]
         
         settings = {'template_path':join(dirname(__file__), 'templates_cccoin'),
-                    'static_path':join(dirname(__file__), 'frontend', 'static'),
+                    'static_path': static_dir,
                     'xsrf_cookies':False,
                     'cookie_secret':'1234',
                     }
