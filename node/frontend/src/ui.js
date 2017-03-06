@@ -196,7 +196,7 @@ module.exports = exports = {
     
     // savvior masonry grid init
 
-    $('.card_item').css('display','block'); // hack to avoid startup thrashing, for now.
+    $('.card_item').css('visibility','visible'); // hack to avoid startup thrashing, for now.
       
     savvior.init('#card-grid', {
       "screen and (max-width: 40em)": { columns: 1 },
@@ -204,6 +204,7 @@ module.exports = exports = {
       "screen and (min-width: 60em) and (max-width: 80em)": { columns: 3 },
       "screen and (min-width: 80em)": { columns: 4 },
     });
+
 
     // do initial timestamp update
     exports.update_card_timestamps();

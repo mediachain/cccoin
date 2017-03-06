@@ -83,10 +83,22 @@ Or run your own web node,
     $ echo "CONTRACT_ADDRESS_HERE" > cccoin/node/build_contracts/cccoin_contract_address.txt
     ```
 
-6. Launch your own web node:
+6. Launch your own `web node`, and then connect to `http://127.0.0.1:50000`:
 
     ```bash
     $ cd cccoin/node/ && python node_main.py start_web
+    ```
+
+7. Launch your own `rewards node`:
+
+    ```bash
+    $ cd cccoin/node/ && python node_main.py start_rewards
+    ```
+
+8. Launch your own `audit node`:
+
+    ```bash
+    $ cd cccoin/node/ && python node_main.py start_rewards
     ```
 
 ## Status

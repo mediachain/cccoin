@@ -5,7 +5,6 @@
 Maintains a stable view of / access to state:
  - Combines multiple underlying blockchain sources,
  - Temporally tracks degrees of confidence based on age, with chain reorg support.
-
 """
 
 ##
@@ -71,7 +70,7 @@ class TemporalTable:
         else:
             self.largest_pruned = val
         
-    def store(self, key, value, start_block, as_set_op = False):
+    def store(self, key, value, start_block, as_set_op = False, remove_set_op = False):
         """ """
         print ('TemporalTable.store()', locals())
     
@@ -95,11 +94,20 @@ class TemporalTable:
             if as_set_op:
                 if start_block not in self.hh[key]:
                     if self.process_safe:
-                        ## BUG1:
-                        #self.hh[key][start_block] = self.manager.dict()
-                        tm = self.hh[key]
-                        tm[start_block] = self.manager.dict()
-                        self.hh[key] = tm
+                        if as_set_op:
+                            ## copy whole previous in:
+                            tm = self.hh[key]
+                            if key in self.current_latest:
+                                tm[start_block] = self.hh[key][self.current_latest[key]].copy()
+                            else:
+                                tm[start_block] = self.manager.dict()
+                            self.hh[key] = tm
+                        else:
+                            ## BUG1:
+                            #self.hh[key][start_block] = self.manager.dict()
+                            tm = self.hh[key]
+                            tm[start_block] = self.manager.dict()
+                            self.hh[key] = tm
                     else:
                         self.hh[key][start_block] = {}
                 ## BUG1:
@@ -108,7 +116,10 @@ class TemporalTable:
                 tm2 = tm[start_block]
                 #print 'aa', key ,start_block, self.hh
                 #print 'hh', self.hh[key][start_block]
-                tm2[value] = True ## Must have already setup in previous call.
+                if remove_set_op:
+                    tm2[value] = False ## Must have already setup in previous call.
+                else:
+                    tm2[value] = True ## Must have already setup in previous call.
                 tm[start_block] = tm2
                 self.hh[key] = tm
             else:
@@ -123,25 +134,52 @@ class TemporalTable:
             self.all_block_nums[start_block] = True
         
     def remove(self, key, value, start_block, as_set_op = False):
+
+        print ('REMOVE', locals())
         with self.the_lock:
             if as_set_op:
-                ## BUG1:
-                #del self.hh[key][start_block][value] ## Must have already setup in previous call.
-                tm = self.hh[key]
-                tm2 = tm[start_block]
-                del tm2[value]
-                tm[start_block] = tm2
-                self.hh[key] = tm
+                self.store(key, value, start_block, as_set_op = True, remove_set_op = True)
+                return 
+                if False:
+                    ###
+                    if start_block not in self.hh[key]:
+                        if self.process_safe:
+                            if as_set_op:
+                                ## copy whole previous in:
+                                tm = self.hh[key]
+                                if key in self.current_latest:
+                                    tm[start_block] = self.hh[key][self.current_latest[key]].copy()
+                                else:
+                                    tm[start_block] = self.manager.dict()
+                                self.hh[key] = tm
+                            else:
+                                ## BUG1:
+                                #self.hh[key][start_block] = self.manager.dict()
+                                tm = self.hh[key]
+                                tm[start_block] = self.manager.dict()
+                                self.hh[key] = tm
+                        else:
+                            self.hh[key][start_block] = {}
+                    ###
+                    ## BUG1:
+                    #del self.hh[key][start_block][value] ## Must have already setup in previous call.
+                    tm = self.hh[key]
+                    tm2 = tm[start_block]
+                    del tm2[value]
+                    tm[start_block] = tm2
+                    self.hh[key] = tm
             else:
                 ## BUG1:
                 #del self.hh[key][start_block]
                 tm = self.hh[key]
                 del tm[start_block]
                 self.hh[key] = tm
+                
+            self.current_latest[key] = max(start_block, self.current_latest.get(key, -maxint))
     
     def lookup(self, key, start_block = -maxint, end_block = 'latest', default = KeyError, with_block_num = True):
         """ Return only latest, between start_block and end_block. """
-
+        
         assert with_block_num
         
         with self.the_lock:
@@ -158,9 +196,9 @@ class TemporalTable:
                     return default
 
             ## Latest:
-
+            
             if end_block == 'latest':
-                end_block = self.current_latest[key]
+                end_block = max(end_block, self.current_latest[key])
 
             ## Exactly end_block:
 
@@ -172,7 +210,7 @@ class TemporalTable:
                         return self.hh[key][end_block]
 
             ## Closest <= block_num:
-
+            
             for xx in sorted(self.hh.get(key,{}).keys(), reverse = True):
                 if xx > end_block:
                     continue
@@ -532,12 +570,25 @@ def test_temporal_db():
     assert tuple(xx.iterate_block_items('table1', T_ANY_FORK, end_block = 1)) == (('a', 'b'), ('e', 'h'))
     
     xx.store('table2', 'fork1', 'z', '1', start_block = 55, as_set_op = True,)
+    assert tuple(sorted(xx.lookup('table2', 'fork1', 'z', end_block = 57)[0].keys())) == ('1',)
     xx.store('table2', 'fork1', 'z', '2', start_block = 56, as_set_op = True,)
+    assert tuple(sorted(xx.lookup('table2', 'fork1', 'z', end_block = 57)[0].keys())) == ('1','2',)
     xx.store('table2', 'fork1', 'z', '3', start_block = 57, as_set_op = True,)
+    assert tuple(sorted(xx.lookup('table2', 'fork1', 'z', start_block = 57)[0].keys())) == ('1', '2', '3')
+    xx.remove('table2', 'fork1', 'z', '3', start_block = 58, as_set_op = True,)
+    assert tuple([a for a,b in xx.lookup('table2', 'fork1', 'z', start_block = 58)[0].items() if b]) == ('1', '2')
+    assert tuple([a for a,b in xx.lookup('table2', 'fork1', 'z', start_block = 56)[0].items() if b]) == ('1', '2')
+    assert tuple([a for a,b in xx.lookup('table2', 'fork1', 'z', end_block = 55)[0].items() if b]) == ('1',)
     
-    ## {'z': {56: {'2': True}, 57: {'3': True}, 55: {'1': True}}}
-    #print 'zz', [x.keys() for x in xx.tables['table2'].forks['fork1'].hh['z'].values()]
-    #print 'zz', xx.lookup('table2','fork1','z',default = set())[0]
+    xx.remove('table2', 'fork1', 'z', '2', start_block = 59, as_set_op = True,)
+    assert tuple([a for a,b in xx.lookup('table2', 'fork1', 'z', end_block = 59)[0].items() if b]) == ('1',)
+    xx.remove('table2', 'fork1', 'z', '1', start_block = 60, as_set_op = True,)
+    assert tuple([a for a,b in xx.lookup('table2', 'fork1', 'z', end_block = 60)[0].items() if b]) == tuple()
+    
+    xx.all_wipe_newer(T_ANY_FORK, start_block = 58)
+    assert tuple(sorted([a for a,b in xx.lookup('table2', 'fork1', 'z', end_block = 59)[0].items() if b])) == ('1','2','3')
+    
+    #print '===FOUR ', list(sorted([(x,[a for a,b in y.items() if b]) for x,y in xx.tables['table2'].forks['fork1'].hh['z'].items()]))
     
     print ('PASSED_DB_BASIC')
 

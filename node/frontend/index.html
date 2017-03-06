@@ -61,7 +61,7 @@
 		.size-1of3 { width: 33.33333%; }
 		.size-1of4 { width: 25%; }
 
-		.card_item{display:none;}
+		.card_item{visibility:hidden;}
 		.card { margin: 5px; overflow: hidden; }
 		.card-image{height:auto;overflow:hidden;background:#000}
 		.card-title {display:none;pointer-events: none;font-size:20px !important;padding:24px 5px !important;}
@@ -259,16 +259,17 @@
 
 				<div id="card-grid" class="row" style="margin-top:0;">
 				  
-					{% for the_item in the_items['items'] %}
+					{% for c, the_item in enumerate(the_items['items'] ) %}
 
 
 					<!-- START CARD -->
 					<div class="card_item">
 						<div class="card" id="card-{{ the_item['post_id'] }}">
-							<div class="card-image">
+							<div class="card-image" style="xxmax-height:300px;">
 								<img class="materialboxed"
-									 data-caption="{{ the_item['image_title'].replace('\n',' ').replace('\r',' ')[:256] +  (('artist_name' in the_item) and (', by ' +  the_item['artist_name']) or ' ') + (('license_type' in the_item) and (', under ' + the_item['license_type']) or ' ') }}"
-									 src="{{ handler.get_image_proxy(the_item['image_url'], height=1024) }}"
+								     data-caption="{{ the_item['image_title'].replace('\n',' ').replace('\r',' ')[:256] +  (('artist_name' in the_item) and (', by ' +  the_item['artist_name']) or ' ') + (('license_type' in the_item) and (', under ' + the_item['license_type']) or ' ') }}"
+								     src="{{ handler.get_image_proxy(the_item['image_url'], height=1024) }}"
+								     {% comment src="{{ handler.get_image_proxy(the_item['image_url'], crop_height=200) }}" %}
 								>
 								<span class="card-title">
 								  {{ the_item['image_title'] }}
@@ -309,7 +310,8 @@
 			<span class="card-money-outer">
 			  <span id="vote_{{ the_item['post_id'] }}_pow">
 			    {{ '%.2f' % (handler.cccoin.tdb.lookup('scores',T_ANY_FORK, the_item['status']['creator_pub'] + '|' + the_item['post_id'],default = 0)[0]) }}
-			  </span> CCC
+			  </span> CCC			  
+			  
 			  {% comment the_item['status'] %}
 			  {% comment repr(handler.cccoin.block_details)[:150] %}
 			  {% comment handler.cccoin.cw.block_details.get(the_item['status']['created_block_num']) %}
@@ -327,7 +329,26 @@
 										   onclick="do_vote('{{ the_item['post_id'] }}',2); return false;"
 										   style="float:right;"><i id="vote_{{ the_item['post_id'] }}_2"
 																   class="material-icons flag-button {{ is_flagged and 'active' or 'inactive' }} white"
-										>flag</i></a>
+													   >flag</i></a>
+										
+			<table style="border-top:1px solid #eee">
+			  <tbody>
+			    
+			    {% comment handler.cccoin.tdb.iterate_block_items('post_voters_1', T_ANY_FORK) %}
+			      {% for block_num,xx in handler.cccoin.tdb.tables['post_voters_1'].forks['DIRECT'].hh.get(the_item['post_id'],{}).items() %}
+			      {% for user_id, is_up in xx.items() %}
+ 			      <tr id="event_1">		
+ 				<td class="blocknum"><a href="" class="black-text">#{{ block_num }}</a></td>		
+ 				<td style="vertical-align:top;">		
+ 				  <a href="" class="{{ is_up and 'red' or 'black'}}-text text-accent-4"><i class="material-icons">thumb_{{ is_up and 'up' or 'down'}}</i></a>		
+ 				  from		
+ 				  <a href="" class="red-text text-accent-4">{{ handler.cccoin.tdb.lookup('user_id_to_username', T_ANY_FORK, user_id, default = 'pending_'+the_item['status']['creator_address'][:10])[0] }}</a>
+ 				</td>		
+ 			      </tr>
+			      {% end %}
+			      {% end %}
+			  </table>
+
 									</div>
 								</div>
 							</div>
@@ -581,8 +602,8 @@
 		<div class="modal-fixed-footer">
 			<div class="row">
 				<div class="col s6 offset-s6">
-					<button id="tos_reject_button" class="btn-flat waves-effect waves-light red">Reject Terms</button>
-					<input id="tos_accept_button" type="submit" class="green waves-effect waves-light btn-flat" value="Accept Terms">
+					<button id="tos_reject_button" class="btn-flat waves-effect waves-light red white-text">Reject Terms</button>
+					<input id="tos_accept_button" type="submit" class="green waves-effect waves-light btn-flat white-text" value="Accept Terms">
 				</div>
 			</div>
 		</div>

@@ -6,15 +6,15 @@
 
 TEST_MODE = False
 
-REWARDS_ACCOUNT = '0x4effded5ac372ec3318142de763d553ca444c1c6'
-#REWARDS_ACCOUNT = False
+#REWARDS_ACCOUNT = '0x4effded5ac372ec3318142de763d553ca444c1c6'
+REWARDS_ACCOUNT = False
 
 ## Flagging just for this web node:
 SUPER_FLAGGER = False
 
 ## See cccoin/docs/nginx_config for nginx setup, or set to False to disable.:
-IMAGE_PROXY_PATH = '/images/'
-#IMAGE_PROXY_PATH = False
+#IMAGE_PROXY_PATH = '/images/'
+IMAGE_PROXY_PATH = False
 
 DATA_DIR = 'build_contracts/'
 
@@ -45,7 +45,7 @@ CORE_SETTINGS = {'REWARDS_CURATION':90.0,     ## Voting rewards
 ## Number of blocks to wait before advancing to each new state:
 
 DEFAULT_CONFIRM_STATES = {'BLOCKCHAIN_PENDING':0,
-                          'BLOCKCHAIN_CONFIRMED':15,
+                          'BLOCKCHAIN_CONFIRMED':1, ## 15
                           }
 ##
 #### Print Settings:
@@ -75,7 +75,7 @@ from node_temporal import test_temporal_table
 # from node_trend import test_trend_detection
 from node_contract import ContractWrapper, test_contract_wrapper
 from node_generic import setup_main
-from node_web import inner_start_web, sig_helper, vote_helper
+from node_web import inner_start_web
 
 ##
 #### Other Imports:
@@ -491,14 +491,11 @@ def test_1(via_cli = False):
         for xlog in cw.c.eth_getFilterLogs(filter):
             print json.dumps(xlog, indent=4)
 
-def start_web(via_cli = False):
-    """
-    Web mode: Web server = Yes, Write rewards = No, Audit rewards = No.
-
-    This mode runs a web server that users can access. Currently, writing of posts, votes and signups to the blockchain
-    from this mode is allowed. Writing of rewards is disabled from this mode, so that you can run many instances of the web server
-    without conflict.
-    """
+def start_inner(mode,
+                via_cli = False,
+                ):
+    assert mode in ['web', 'audit', 'rewards']
+    
     print ('SETUP_CCCOIN...')
     
     the_address = get_deployed_address()
@@ -507,30 +504,42 @@ def start_web(via_cli = False):
         print ('USING_ALREADY_DEPLOYED', the_address)
 
     else:
-        the_address = deploy_contract()
-        print ('USING_NEWLY_DEPLOYED', the_address)
-
+        #the_address = deploy_contract()
+        #print ('USING_NEWLY_DEPLOYED', the_address)
+        assert False, 'First must run `python node_main.py deploy_contract`, or put contract address in `'+ CONTRACT_ADDRESS_FN + '`.'
+    
     assert the_address
         
     cw = ContractWrapper(the_address = the_address,
-                         
                          settings_confirm_states = DEFAULT_CONFIRM_STATES,
                          )
 
     ## Must be created pre-forking, for the shared in-memory DBs:
     cccoin = CCCoinCore(contract_wrapper = cw,
                         settings_rewards = CORE_SETTINGS,
-                        mode = 'web',
+                        mode = mode,
                         ) 
     
-    cw.start_contract_thread()
+    cw.start_contract_thread(start_in_foreground = (mode != 'web'),
+                             terminate_on_exception = (mode != 'web'),
+                             )
     
-    inner_start_web(cccoin,
-                    image_proxy_path = IMAGE_PROXY_PATH,
-                    )
+    if mode == 'web':
+        inner_start_web(cccoin,
+                        image_proxy_path = IMAGE_PROXY_PATH,
+                        )
+
+def start_web(via_cli = False):
+    """
+    Web mode: Web server = Yes, Write rewards = No, Audit rewards = No.
+
+    This mode runs a web server that users can access. Currently, writing of posts, votes and signups to the blockchain
+    from this mode is allowed. Writing of rewards is disabled from this mode, so that you can run many instances of the web server
+    without conflict.
+    """
+    start_inner(mode = 'web')
     
-    
-def start_rewards():
+def start_rewards(via_cli = False):
     """
     Rewards mode: Web server = No, Write rewards = Yes, Audit rewards = No.
     
@@ -539,45 +548,20 @@ def start_rewards():
     This mode collects up events and distributes rewards on the blockchain. Currently, you must be the be owner of 
     the ethereum contract (you called `deploy_contract`) in order to distribute rewards.
     """
+    start_inner(mode = 'rewards')
+    
 
-    the_address = get_deployed_address()
-    
-    cw = ContractWrapper(the_address = the_address,
-                         settings_confirm_states = DEFAULT_CONFIRM_STATES,
-                         )        
-    
-    xx = CCCoinCore(cw,
-                    mode = 'rewards',
-                    settings_rewards = CORE_SETTINGS,
-                    )
-    
-    while True:
-        xx.loop_once()
-        sleep(0.5)
-
-def start_audit():
+def start_audit(via_cli = False):
     """
     Audit mode: Web server = No, Write rewards = No, Audit rewards = Yes.
     """
-    cw = ContractWrapper(the_address = the_address,
-                         settings_confirm_states = DEFAULT_CONFIRM_STATES,
-                         )
-    
-    xx = CCCoinCore(mode = 'audit',
-                    settings_rewards = CORE_SETTINGS,
-                    )
-    
-    while True:
-        xx.loop_once()
-        sleep(0.5)
+    start_inner(mode = 'audit')
 
         
 functions=['deploy_contract',
            'start_rewards',
            'start_audit',
            'start_web',
-           'sig_helper',
-           'vote_helper',
            'test_1',
            'test_2',
            'test_3',

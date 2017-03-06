@@ -19,6 +19,7 @@ def fixed_int_to_hex(vv):
 from threading import current_thread,Thread
 from Queue import Queue
 from time import sleep, time
+import json
 
 class ContractWrapper:
     
@@ -37,6 +38,7 @@ class ContractWrapper:
                  start_at_current_block = False,
                  auto_deploy = True,
                  contract_thread_sleep_time = 1.0,
+                 reorg_callback = False,
                  ):
         """
         Simple contract wrapper, assists with deploying contract, sending transactions, and tracking event logs.
@@ -52,8 +54,17 @@ class ContractWrapper:
         - blocking_sleep_time: time to sleep when blocking and polling for a transaction receipt.
         """
 
+        self.block_details = {}
+        
+        self.reorg_callback = reorg_callback
+        self.confirmation_tracker = {} ## {'block_hash':{'prev_block_hash':xx, 'block_num':yy}}
+        
+        self.done_block_nums = {} ## {confirm_state:set()}
+        self.done_transactions = {} ## {confirm_state:set()}
+        self.prev_block_num = {} ## {confirm_state:set()}
+        
         self.blocking_sleep_time = blocking_sleep_time
-
+        
         self.c = EthJsonRpc(rpc_host, rpc_port)
 
         self.contract_thread_sleep_time = contract_thread_sleep_time
@@ -63,9 +74,13 @@ class ContractWrapper:
         self.current_block_at_init = self.c.eth_blockNumber()
         
         if self.start_at_current_block:
-            self.latest_done_block = self.current_block_at_init - 1
+            self.last_incoming_block = max(0, self.current_block_at_init - 1)
         else:
-            self.latest_done_block = 0
+            self.last_incoming_block = 0
+
+        self.starting_block_num = self.last_incoming_block
+
+        self.msgs = {} ## {block_num:[msg, msg, msg]}
 
         self.the_code = the_code
         self.the_sig = the_sig
@@ -160,7 +175,7 @@ class ContractWrapper:
 
     def loop_once(self):
         assert self.is_deployed, 'Must deploy contract first.'
-
+        
         had_any_events = False
         
         if self.c.eth_syncing():
@@ -186,69 +201,179 @@ class ContractWrapper:
                 break
                 
         return had_any_events
-        
 
-    def poll_incoming(self):
+    
+    def check_for_reorg(self,
+                        block_num,
+                        ):
+        """ Check for reorg since last check, and reorgs during our reorg rewinding... """
+        print ('START check_for_reorg', block_num)
+
+        block_num = ethereum.utils.parse_int_or_hex(block_num)
+        
+        while True:
+            
+            cur_num = block_num
+            had_reorg = False
+            
+            while True:
+                if cur_num == self.starting_block_num:
+                    break
+
+                assert cur_num >= self.starting_block_num, (cur_num, self.starting_block_num)
+
+                ## Get info for prev and current:
+                
+                for x_block_num in [block_num, block_num - 1]:
+                    if x_block_num not in self.block_details:
+                        rh = self.c.eth_getBlockByNumber(x_block_num)
+                        
+                        ## Strip down to just a couple fields:
+                        block_h = {'timestamp':ethereum.utils.parse_int_or_hex(rh['timestamp']),
+                                   'hash':rh['hash'],
+                                   'parentHash':rh['parentHash'],
+                                   'blockNumber':x_block_num,
+                                   }
+                        self.block_details[x_block_num] = block_h
+
+                ## Check for reorg:
+                
+                block_h = self.block_details[block_num]
+
+                if block_h['parentHash'] != self.block_details[block_h['blockNumber'] - 1]['hash']:
+                    print ('!!! REORG', block_num, '->', cur_num)
+                    cur_num -= 1
+                    self.latest_done_block = cur_num
+                    had_reorg = True
+                    continue
+                break
+            
+            ## Rewind state if had_reorg:
+            
+            if had_reorg and (self.reorg_callback is not False):
+                self.reorg_callback(cur_num)
+                self.last_incoming_block = cur_num - 1
+            
+            ## If had_reorg, loop again - to detect another reorg that occured while we tracked down the reorg...
+            
+            if not had_reorg:
+                break
+            
+        return had_reorg
+
+    
+    def poll_incoming(self, chunk_size = 50):
         """
         https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_newfilter
-        
-        1) Create new event filter for each event type we're watching.
-        2) 
+
+        - track buffer of events from old blocks
+        - track pointer to last processed block
         """
         
         assert self.is_deployed, 'Must deploy contract first.'
-        self.latest_block_num = self.c.eth_blockNumber()
-         
+        
+        #self.latest_block_num = self.c.eth_blockNumber()
+        
+        from_block = self.last_incoming_block + 1
+        
+        params = {'from_block': fixed_int_to_hex(from_block),
+                  'to_block':  'latest', #fixed_int_to_hex(from_block + chunk_size),
+                  'address': self.contract_address,
+                  }
+
+        print ('eth_newFilter', 'from_block:', from_block, 'params:', params)
+        
+        self.the_filter = str(self.c.eth_newFilter(**params))
+
+        num_blocks = len(self.msgs)
+
+        xx_msgs = self.c.eth_getFilterLogs(self.the_filter)
+        
+        for msg in xx_msgs:
+            msg['blockNumber'] = ethereum.utils.parse_int_or_hex(msg['blockNumber'])
+            if msg['blockNumber'] not in self.msgs:
+                self.msgs[msg['blockNumber']] = []
+            self.msgs[msg['blockNumber']].append(msg)
+
+        if num_blocks == len(self.msgs):
+            ## Nothing new
+            assert not len(xx_msgs), len(xx_msgs)
+            return False
+        
         for do_state, state_num_blocks in self.confirm_states.items():
-            
-            from_block = self.latest_done_block + 1 - state_num_blocks
-            to_block = max(self.latest_done_block, self.latest_block_num) + 1
-            
-            if from_block < 0:
-                continue
-            if from_block < 1:
-                from_block = 1
-            
-            got_block = 0
-            
-            params = {'from_block': fixed_int_to_hex(from_block),
-                      'to_block': 'latest',#fixed_int_to_hex(to_block),
-                      'address': self.contract_address,
-                      }
-            
-            print ('eth_newFilter', 'do_state:', do_state, 'latest_block_num:', self.latest_block_num, 'params:', params)
-            
-            self.the_filter = str(self.c.eth_newFilter(**params))
-            
-            print ('eth_getFilterChanges', self.the_filter)
-            
-            msgs = self.c.eth_getFilterLogs(self.the_filter)
-            
-            if msgs:
-                had_any_events = True
-            else:
-                had_any_events = False
-                
-            print ('POLL_INCOMING_GOT', len(msgs))
-            
-            for msg in msgs:
-                
-                self.latest_done_block = max(self.latest_done_block,
-                                             ethereum.utils.parse_int_or_hex(msg['blockNumber']),
-                                             )
-                
-                self.events_callback(msg = msg, receipt = False, received_via = do_state)
 
-                self.latest_block_num_done = max(0, max(self.latest_block_num_done, got_block - 1))
+            longest_confirm_state = max(self.confirm_states.values())
+            newest_block_num = max(self.msgs)
+            
+            ## Oldest to newest:
+            
+            for nn in xrange(max(1, self.last_incoming_block - state_num_blocks),
+                             newest_block_num + 1,
+                             ):
+                
+                if self.check_for_reorg(nn):
+                    ## Just wait for next call to poll_incoming() before resuming.
+                    return False
 
-            return had_any_events
+                if nn in self.msgs:
+                    for msg in self.msgs[nn]:
+                        print ('EMIT', do_state, nn, msg['data'])
+                        self.events_callback(msg = msg, receipt = False, received_via = do_state)
+            
+            ## Clear out old buffer:
+            
+            for nn in self.msgs.keys():
+                if nn < newest_block_num - longest_confirm_state - 1:
+                    del self.msgs[nn]
+        
+        self.last_incoming_block = newest_block_num
 
-    def _start_contract_thread(self,):
+        return True
+    
+        if False:
+            ## START CHECKS
+
+            if do_state not in self.done_transactions:
+                self.done_transactions[do_state] = set()
+                self.done_block_nums[do_state] = set()
+
+            msg_block_num = ethereum.utils.parse_int_or_hex(msg['blockNumber'])
+
+            if cm == 0:
+                assert msg_block_num not in self.done_block_nums[do_state], ('Seen block twice?',
+                                                                             msg_block_num,
+                                                                             )
+                self.done_block_nums[do_state].add(msg_block_num)
+
+            if do_state in self.prev_block_num:
+                assert msg_block_num >= self.prev_block_num[do_state], ('REORG?',
+                                                                        msg_block_num,
+                                                                        self.prev_block_num[do_state],
+                                                                        )
+            self.prev_block_num[do_state] = msg_block_num
+
+            assert msg['transactionHash'] not in self.done_transactions[do_state], ('Seen transaction twice?',
+                                                                                    msg_block_num,
+                                                                                    msg['transactionHash'],
+                                                                                    )
+            self.done_transactions[do_state].add(msg['transactionHash'])
+
+            ## END CHECKS
+
+        return had_any_events
+
+    def _start_contract_thread(self,
+                               terminate_on_exception = False,
+                               ):
         while True:
             try:
                 had_any_events = self.loop_once()
             except Exception as e:
-                print ('LOOP_ONCE_EXCEPTION', e)
+                print ('-----LOOP_ONCE_EXCEPTION', e)
+                #exit(-1)
+                
+                if terminate_on_exception:
+                    raise
                 continue
             
             if not had_any_events:
@@ -256,13 +381,21 @@ class ContractWrapper:
             
             sleep(self.contract_thread_sleep_time)
     
-    def start_contract_thread(self,):
+    def start_contract_thread(self,
+                              start_in_foreground = False,
+                              terminate_on_exception = False,
+                              ):
         """
         Start ContractWrapper loop_once() in background thread, which (in that thread!) calls back to self.process_event()
         """
-        self.t = Thread(target = self._start_contract_thread)
-        self.t.daemon = True
-        self.t.start()
+        if start_in_foreground:
+            self._start_contract_thread(terminate_on_exception = terminate_on_exception)
+        else:
+            self.t = Thread(target = self._start_contract_thread,
+                            args = (terminate_on_exception,),
+                            )
+            self.t.daemon = True
+            self.t.start()
     
     def send_transaction(self, *args, **kw):
         assert len(args) <= 2
