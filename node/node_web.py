@@ -571,7 +571,7 @@ class handle_front(BaseHandler):
                                                  sort_by = sort_by,
                                                  offset = offset,
                                                  increment = 1000,
-                                                 self.application.web_node_flag_accounts,
+                                                 web_node_flag_accounts = self.application.web_node_flag_accounts,
                                                  )
         
         num_items = len(the_items['items'])
