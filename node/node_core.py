@@ -773,7 +773,8 @@ class CCCoinCore:
                     
                     #the_db['scores'][vote['item_id']] = the_db['scores'].get(vote['item_id'], 0) + vote['direction'] ## TODO - Not thread safe.
 
-                    if (received_via == 'BLOCKCHAIN_CONFIRMED') and (vote['direction'] in [-1, 1, 0]):
+                    #(received_via == 'BLOCKCHAIN_CONFIRMED') and 
+                    if (int(vote['direction']) in [-1, 1, 0]):
                     
                         with self.tdb.the_lock:
                             

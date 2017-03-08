@@ -332,7 +332,7 @@
 									<div>
 			<span class="card-money-outer">
 			  <span id="vote_{{ the_item['post_id'] }}_pow">
-			    {{ '%.2f' % (handler.cccoin.tdb.lookup('scores',T_ANY_FORK, the_item['status']['creator_pub'] + '|' + the_item['post_id'],default = 0)[0]) }}
+			    {{ '%.2f' % (handler.cccoin.tdb.lookup('scores', T_ANY_FORK, the_item['status']['creator_pub'] + '|' + the_item['post_id'],default = 0)[0]) }}
 			  </span> CCC			  
 			  {{ is_nuked and '(nuked)' or '' }}
 			  {% comment the_item['status'] %}
@@ -682,7 +682,7 @@
       <div class="col s12 center-align">
 	{% if session %}
 	Your CCC: {{ '%.2f' % (handler.cccoin.tdb.lookup('scores_per_user',T_ANY_FORK, session['pub'],default = 0)[0]) }}<br>
-	   Your Address: {{ session['address'] }}
+	Your Address: {{ session['address'] }}
 	{% end %}
       </div>
     </div>
