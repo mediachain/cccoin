@@ -681,6 +681,7 @@
     <div class="row valign-wrapper">
       <div class="col s12 center-align">
 	{% if session %}
+	Your CCC: {{ '%.2f' % (handler.cccoin.tdb.lookup('scores_per_user',T_ANY_FORK, session['pub'],default = 0)[0]) }}<br>
 	   Your Address: {{ session['address'] }}
 	{% end %}
       </div>

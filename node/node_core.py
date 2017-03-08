@@ -347,6 +347,7 @@ class CCCoinCore:
                                              'user_id_to_username',
                                              'username_to_user_id',
                                              'scores',
+                                             'scores_per_user',
                                              'blind_lookup',
                                              'blind_lookup_rev',
                                              ],
@@ -772,25 +773,63 @@ class CCCoinCore:
                     
                     #the_db['scores'][vote['item_id']] = the_db['scores'].get(vote['item_id'], 0) + vote['direction'] ## TODO - Not thread safe.
 
-                    if False:#vote['direction'] in [-1, 1]:
-                        
-                        if vote['direction'] != self.tdb.lookup('scores',
-                                                                received_via,
-                                                                creator_pub + '|' + vote['item_id'],
-                                                                default = 0,
-                                                                )[0]:
+                    if (received_via == 'BLOCKCHAIN_CONFIRMED') and (vote['direction'] in [-1, 1, 0]):
+                    
+                        with self.tdb.the_lock:
                             
-                            with self.tdb.the_lock:
-                                self.tdb.store('scores',
-                                               received_via,
-                                               creator_pub + '|' + vote['item_id'],
-                                               vote['direction'] + self.tdb.lookup('scores',
-                                                                                   received_via,
-                                                                                   creator_pub + '|' + vote['item_id'],
-                                                                                   default = 0,
-                                                                                   )[0],
-                                               blind_credit_block_num,
-                                               )
+                            cur_dir = self.tdb.lookup('post_voters_' + str(int(vote['direction'])),
+                                                      received_via,
+                                                      creator_pub + '|' + vote['item_id'],
+                                                      default = 0,
+                                                      )[0]
+                            
+                            if cur_dir == -1:
+                                if vote['direction'] == -1:
+                                    out_dir = 0
+                                elif vote['direction'] == 0:
+                                    out_dir = 1
+                                elif vote['direction'] == 1:
+                                    out_dir = 2
+                            if cur_dir == 0:
+                                if vote['direction'] == -1:
+                                    out_dir = -1
+                                elif vote['direction'] == 0:
+                                    out_dir = 0
+                                elif vote['direction'] == 1:
+                                    out_dir = 1
+                            if cur_dir == 1:
+                                if vote['direction'] == -1:
+                                    out_dir = -2
+                                elif vote['direction'] == 0:
+                                    out_dir = 1
+                                elif vote['direction'] == 1:
+                                    out_dir = 0
+                            
+                            cur_score = self.tdb.lookup('scores',
+                                                        received_via,
+                                                        creator_pub + '|' + vote['item_id'],
+                                                        default = 0,
+                                                        )[0]
+                            
+                            self.tdb.store('scores',
+                                           received_via,
+                                           creator_pub + '|' + vote['item_id'],
+                                           cur_score + out_dir,
+                                           start_block = blind_credit_block_num,
+                                           )
+                            
+                            cur_score_user = self.tdb.lookup('scores_per_user',
+                                                             received_via,
+                                                             creator_pub,
+                                                             default = 0,
+                                                             )[0]
+                            
+                            self.tdb.store('scores_per_user',
+                                           received_via,
+                                           creator_pub,
+                                           cur_score_user + out_dir,
+                                           start_block = blind_credit_block_num,
+                                           )
                             
                     ## Record {item_id -> voters} historic lookup:
 

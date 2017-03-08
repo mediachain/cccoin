@@ -232,10 +232,7 @@ def deploy_contract(via_cli = False,
         f.write(cw.contract_address)
     
     print ('NEW_CONTRACT_DEPLOYED', cw.contract_address, '->', fn)
-    print ('PRESS ENTER...')
-    raw_input()
-    
-    
+        
     return cw.contract_address
     
 ##

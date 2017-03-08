@@ -372,6 +372,7 @@ class ContractWrapper:
             except Exception as e:
                 print ('-----LOOP_ONCE_EXCEPTION', e)
                 #exit(-1)
+                raise
                 
                 if terminate_on_exception:
                     raise
