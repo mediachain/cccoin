@@ -893,6 +893,13 @@ class CCCoinCore:
                                        vote['direction'],
                                        blind_credit_block_num,
                                        )
+                        self.tdb.store('unblinded_votes',
+                                       received_via,
+                                       pub_to_address(creator_pub) + '|' + vote['item_id'],
+                                       vote['direction'],
+                                       blind_credit_block_num,
+                                       )
+
 
                     elif vote['direction'] == 2:
                         the_db['flags'][(creator_pub, vote['item_id'])] = vote['direction']
@@ -900,6 +907,12 @@ class CCCoinCore:
                         self.tdb.store('unblinded_flags',
                                        received_via,
                                        creator_pub + '|' + vote['item_id'],
+                                       vote['direction'],
+                                       blind_credit_block_num,
+                                       )
+                        self.tdb.store('unblinded_flags',
+                                       received_via,
+                                       pub_to_address(creator_pub) + '|' + vote['item_id'],
                                        vote['direction'],
                                        blind_credit_block_num,
                                        )
@@ -911,6 +924,12 @@ class CCCoinCore:
                         self.tdb.store('unblinded_flags',
                                        received_via,
                                        creator_pub + '|' + vote['item_id'],
+                                       vote['direction'],
+                                       blind_credit_block_num,
+                                       )
+                        self.tdb.store('unblinded_flags',
+                                       received_via,
+                                       pub_to_address(creator_pub) + '|' + vote['item_id'],
                                        vote['direction'],
                                        blind_credit_block_num,
                                        )
@@ -1403,12 +1422,24 @@ class CCCoinCore:
                          post_id,
                          ):
         rr = {}
-        for fork_name in self.cw.confirm_states:
-            for block_num, user_id_is_up in self.tdb.tables['post_voters_1'].forks[fork_name].hh.get(post_id,{}).items():
-                if block_num not in rr:
-                    rr[block_num] = {}
-                rr[block_num].update(user_id_is_up.items())
-        return sorted(rr.items(), reverse = True)
+        for table_name in ['post_voters_1',
+                           'post_voters_-1',
+                           ]:
+            for fork_name in self.cw.confirm_states:
+                for block_num, user_id_is_up in self.tdb.tables[table_name].forks[fork_name].hh.get(post_id,{}).items():
+                    if block_num not in rr:
+                        rr[block_num] = {}
+                    for aa,bb in [(x,y and table_name or ('rem_' + table_name)) for x,y in user_id_is_up.items()]:
+                        if bb.startswith('rem_'):
+                            ## Only overwrite removes:
+                            #if aa not in rr[block_num]:
+                            #    rr[block_num][aa] = bb
+                            pass ## For now, no removes.
+                        else:
+                            rr[block_num][aa] = bb
+        rr = sorted(rr.items(), reverse = True)
+        print 'RR',rr
+        return rr
         
     def get_sorted_posts(self,
                          offset = 0,

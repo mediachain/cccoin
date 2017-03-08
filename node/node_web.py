@@ -8,6 +8,7 @@ from node_core import (CCCoinCore,
                        client_post,
                        client_vote,
                        client_create_blind,
+                       pub_to_address,
                        )
 
 from node_generic import htime_ago
@@ -385,10 +386,12 @@ class Application(tornado.web.Application):
     def __init__(self,
                  cccoin,
                  image_proxy_path,
+                 web_node_flag_accounts,
                  ):
 
         self.the_cccoin = cccoin
         self.image_proxy_path = image_proxy_path
+        self.web_node_flag_accounts = web_node_flag_accounts
         static_dir = join(dirname(__file__), 'frontend', 'static')
 
         handlers = [(r'/',handle_front,),
@@ -464,6 +467,7 @@ class BaseHandler(tornado.web.RequestHandler):
         from random import choice, randint
         kwargs['choice'] = choice
         kwargs['randint'] = randint
+        kwargs['pub_to_address'] = pub_to_address
         kwargs['all_dbs'] = self.cccoin.DBL['all_dbs']
         kwargs['time'] = time
         kwargs['htime_ago'] = htime_ago
@@ -569,7 +573,20 @@ class handle_front(BaseHandler):
         
         num_items = len(the_items['items'])
         
-        #print ('the_items', the_items)
+        if 'address' not in session:
+            session['address'] = pub_to_address(session['pub'])
+            
+        rr = []
+        for the_item in the_items['items']:
+            for xacc in self.application.web_node_flag_accounts:
+                print ('YY', the_item)
+                if not self.cccoin.tdb.lookup('unblinded_flags',
+                                              T_ANY_FORK,
+                                              xacc + '|' + the_item['post_id'],
+                                              default = False,
+                                              )[0] == 2:                    
+                    rr.append(the_item)
+        the_items['items'] = rr
         
         self.render_template('index.html',locals())
         
@@ -696,6 +713,7 @@ class handle_login_2(BaseHandler):
         if (username_success and password_success):
             self.set_secure_cookie('auth', json.dumps({'created':int(time()),
                                                        'pub':the_pub,
+                                                       'address':pub_to_address(the_pub),
                                                        }))
             self.cccoin.DBL['SEEN_USERS_DB'][the_pub] = True
         
@@ -790,6 +808,7 @@ class handle_track(BaseHandler):
 
 def inner_start_web(cccoin,
                     image_proxy_path = False,
+                    web_node_flag_accounts = [],
                     port = 50000,
                     ):
     
@@ -797,7 +816,10 @@ def inner_start_web(cccoin,
     
     try:
         tornado.options.parse_command_line()
-        http_server = HTTPServer(Application(cccoin, image_proxy_path),
+        http_server = HTTPServer(Application(cccoin,
+                                             image_proxy_path,
+                                             web_node_flag_accounts,
+                                             ),
                                  xheaders=True,
                                  )
         http_server.bind(port)

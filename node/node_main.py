@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from os import environ
+
 ##
 #### Settings:
 ##
@@ -8,6 +10,9 @@ TEST_MODE = False
 
 #REWARDS_ACCOUNT = '0x4effded5ac372ec3318142de763d553ca444c1c6'
 REWARDS_ACCOUNT = False
+
+## Assign special flagging visibility power to some users, just for your web node:
+WEB_NODE_FLAG_ACCOUNTS = environ.get('WEB_NODE_FLAG_ACCOUNTS', '').split(',')
 
 ## Flagging just for this web node:
 SUPER_FLAGGER = False
@@ -51,7 +56,7 @@ DEFAULT_CONFIRM_STATES = {'BLOCKCHAIN_PENDING':0,
 #### Print Settings:
 ##
 
-ss = {x:y for x,y in dict(locals()).iteritems() if not x.startswith('__')}
+ss = {x:y for x,y in dict(locals()).iteritems() if (not x.startswith('__')) and (x != 'environ')}
 
 import json
 print 'SETTINGS:'
@@ -527,6 +532,7 @@ def start_inner(mode,
     if mode == 'web':
         inner_start_web(cccoin,
                         image_proxy_path = IMAGE_PROXY_PATH,
+                        web_node_flag_accounts = WEB_NODE_FLAG_ACCOUNTS,
                         )
 
 def start_web(via_cli = False):

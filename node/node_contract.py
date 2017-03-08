@@ -209,6 +209,7 @@ class ContractWrapper:
         """ Check for reorg since last check, and reorgs during our reorg rewinding... """
         print ('START check_for_reorg', block_num)
 
+        return 
         block_num = ethereum.utils.parse_int_or_hex(block_num)
         
         while True:

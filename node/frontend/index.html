@@ -211,7 +211,7 @@
 			</li>
 			<li><a class="waves-effect waves-light modal-trigger btn btn-floating white"
 				   style="position:static;"
-				   data-target="modal1" href="#modal1"><i class="material-icons black-text text-lighten-1">add</i></a></li>
+			       data-target="modal1" href="#modal1"><i class="material-icons black-text text-lighten-1">add</i></a></li>
 			<li><a class="waves-effect waves-light modal-trigger"
 				   id="login_button"
 				   data-target="modal2" href="#modal2">Login / Sign up</a></li>
@@ -262,7 +262,7 @@
 				  
 					{% for c, the_item in enumerate(the_items['items'] ) %}
 
-
+					
 					<!-- START CARD -->
 					<div class="card_item">
 						<div class="card" id="card-{{ the_item['post_id'] }}">
@@ -338,16 +338,23 @@
 			    {% set hist = handler.cccoin.get_vote_history(the_item['post_id']) %}
 			    {% set cnt = 0 %}
 			      {% for cc, (block_num,xx) in enumerate(hist) %}
-			      {% for user_id, is_up in xx.items() %}
+			      {% for user_id, the_action in xx.items() %}
 			    {% set cnt += 1 %}
  			      <tr class="hist_{{ the_item['post_id'] }}" style="{{ cnt > 5 and 'display:none;' or '' }}">
  				<td style="width:32px;"><a href="" class="black-text">#{{ block_num }}</a></td>		
  				<td style="vertical-align:top;width:32px;">				  
- 				  <a href=""
-				     class="{{ is_up and 'red' or 'black'}}-text text-accent-4"><i class="material-icons">thumb_{{ is_up and 'up' or 'down'}}</i></a>		
+ 				  <span
+				     class="{% if the_action == 'post_voters_1' %}red{% elif the_action == 'post_voters_-1' %}black{% else %}grey{% end %}-text text-accent-4"><i class="material-icons">
+				      {% if the_action == 'post_voters_1' %}
+				      thumb_up
+				      {% elif the_action == 'post_voters_-1' %}
+				      thumb_down
+				      {% else %}
+				      thumbs_up_down
+				      {% end %}</i></span>		
 				</td>
 				<td style="vertical-align:middle;">
-				  from		
+				  from 
  				  <a href="/?user={{ user_id[:20] }}"
 				     class="red-text text-accent-4">{{ handler.cccoin.tdb.lookup('user_id_to_username', T_ANY_FORK, user_id, default = 'pending_'+user_id[:10])[0] }}</a>
 				  {{ htime_ago(handler.cccoin.block_details.get(block_num,{'timestamp':time()})['timestamp']) }}
@@ -630,6 +637,11 @@
 
 <footer class="footer-copyright">
   <div class="container">
+    <div class="row valign-wrapper">
+      <div class="col s12 center-align">
+	  Your Address: {{ session['address'] }}
+      </div>
+    </div>
     <div class="row valign-wrapper">
       <div class="col s12 center-align" style="font-size: .9rem;">
 	<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/">
