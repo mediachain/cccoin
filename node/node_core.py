@@ -954,8 +954,6 @@ class CCCoinCore:
         ## Compute block rewards, for actions older than MAX_UNBLIND_DELAY, to allow time for unblinding:
         
         if (received_via == 'BLOCKCHAIN_CONFIRMED'):
-
-            assert msg['type'] == 'mined', msg['type']
             
             ##
             #### START REWARDS CALCULATION:
@@ -1447,6 +1445,7 @@ class CCCoinCore:
                          sort_by = False,
                          filter_users = False,
                          filter_ids = False,
+                         web_node_flag_accounts = [],
                          ):
         """
         Get sorted items.
@@ -1518,6 +1517,22 @@ class CCCoinCore:
         rr = list(sorted([(x['status'][sort_by],x) for x in rr], reverse=True))
         rr = rr[offset:offset + increment]
         rr = [y for x,y in rr]
+        
+        ## Flag filter:
+        
+        if web_node_flag_accounts:
+            rr2 = []
+            for the_item in the_items['items']:
+                for xacc in web_node_flag_accounts:
+                    if not self.cccoin.tdb.lookup('unblinded_flags',
+                                                  T_ANY_FORK,
+                                                  xacc + '|' + the_item['post_id'],
+                                                  default = False,
+                                                  )[0] == 2:                    
+                        rr2.append(the_item)
+            rr = rr2
+        
+        ## Done:
         
         rrr = {'success':True, 'items':rr, 'sort':sort_by}
         

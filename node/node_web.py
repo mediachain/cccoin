@@ -563,30 +563,18 @@ class handle_front(BaseHandler):
         increment = intget(self.get_argument('increment','50'), 50) or 50
         sort_by = self.get_argument('sort', 'trending')
         
+        if 'address' not in session:
+            session['address'] = pub_to_address(session['pub'])
         
         the_items = self.cccoin.get_sorted_posts(filter_users = filter_users,
                                                  filter_ids = filter_ids,
                                                  sort_by = sort_by,
                                                  offset = offset,
                                                  increment = 1000,
+                                                 self.application.web_node_flag_accounts,
                                                  )
         
         num_items = len(the_items['items'])
-        
-        if 'address' not in session:
-            session['address'] = pub_to_address(session['pub'])
-            
-        rr = []
-        for the_item in the_items['items']:
-            for xacc in self.application.web_node_flag_accounts:
-                print ('YY', the_item)
-                if not self.cccoin.tdb.lookup('unblinded_flags',
-                                              T_ANY_FORK,
-                                              xacc + '|' + the_item['post_id'],
-                                              default = False,
-                                              )[0] == 2:                    
-                    rr.append(the_item)
-        the_items['items'] = rr
         
         self.render_template('index.html',locals())
         

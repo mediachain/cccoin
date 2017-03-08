@@ -304,7 +304,7 @@ class ContractWrapper:
         for do_state, state_num_blocks in self.confirm_states.items():
 
             longest_confirm_state = max(self.confirm_states.values())
-            newest_block_num = max(self.msgs)
+            newest_block_num = max(max(self.msgs), self.last_incoming_block)
             
             ## Oldest to newest:
             
