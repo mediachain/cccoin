@@ -334,7 +334,7 @@
 			  <span id="vote_{{ the_item['post_id'] }}_pow">
 			    {{ '%.2f' % (handler.cccoin.tdb.lookup('scores',T_ANY_FORK, the_item['status']['creator_pub'] + '|' + the_item['post_id'],default = 0)[0]) }}
 			  </span> CCC			  
-			  {{ is_nuked and '(nuked)' }}
+			  {{ is_nuked and '(nuked)' or '' }}
 			  {% comment the_item['status'] %}
 			  {% comment repr(handler.cccoin.block_details)[:150] %}
 			  {% comment handler.cccoin.cw.block_details.get(the_item['status']['created_block_num']) %}
@@ -380,7 +380,7 @@
 			      {% for user_id, the_action in xx.items() %}
 			    {% set cnt += 1 %}
  			      <tr class="hist_{{ the_item['post_id'] }}" style="{{ cnt > 5 and 'display:none;' or '' }}">
- 				<td style="width:32px;"><a href="" class="black-text">#{{ block_num }}</a></td>		
+ 				<td style="width:32px;display:none;"><a href="" class="black-text">#{{ block_num }}</a></td>		
  				<td style="vertical-align:top;width:32px;">				  
  				  <span
 				     class="{% if the_action == 'post_voters_1' %}red{% elif the_action == 'post_voters_-1' %}black{% else %}grey{% end %}-text text-accent-4"><i class="material-icons">
