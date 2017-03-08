@@ -11,8 +11,11 @@ TEST_MODE = False
 #REWARDS_ACCOUNT = '0x4effded5ac372ec3318142de763d553ca444c1c6'
 REWARDS_ACCOUNT = False
 
-## Assign special flagging visibility power to some users, just for your web node:
+## Just for your web node, assign special flagging visibility power to some users:
 WEB_NODE_FLAG_ACCOUNTS = environ.get('WEB_NODE_FLAG_ACCOUNTS', '').split(',')
+
+## Just for your web node, one of these must first approve all visible posts:
+WEB_NODE_APPROVAL_ACCOUNTS = environ.get('WEB_NODE_FLAG_ACCOUNTS', '').split(',')
 
 ## Flagging just for this web node:
 SUPER_FLAGGER = False
@@ -533,6 +536,7 @@ def start_inner(mode,
         inner_start_web(cccoin,
                         image_proxy_path = IMAGE_PROXY_PATH,
                         web_node_flag_accounts = WEB_NODE_FLAG_ACCOUNTS,
+                        web_node_approval_accounts = WEB_NODE_APPROVAL_ACCOUNTS
                         )
 
 def start_web(via_cli = False):

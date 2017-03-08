@@ -331,6 +331,7 @@ class CCCoinCore:
         
         self.tdb = TemporalDB(table_names = ['unblinded_votes',
                                              'unblinded_flags',
+                                             'unblinded_approvals',
                                              'min_lock_per_user',
                                              'lock_per_item',
                                              'posts',
@@ -339,7 +340,8 @@ class CCCoinCore:
                                              'post_voters_1',
                                              'post_voters_2',
                                              'post_voters_-2',
-                                             'post_voters_0',
+                                             'post_voters_3',
+                                             'post_voters_-3',
                                              'paid_rewards_lock',
                                              'owed_rewards_lock',
                                              'user_id_to_username',
@@ -867,6 +869,48 @@ class CCCoinCore:
                                             )
                         except KeyError:
                             pass
+                    elif vote['direction'] == -3:
+                        try:
+                            self.tdb.remove('post_voters_' + str(3),
+                                            received_via,
+                                            vote['item_id'],
+                                            creator_address,
+                                            start_block = blind_credit_block_num,
+                                            as_set_op = True,
+                                            )
+                        except KeyError:
+                            pass
+                        try:
+                            self.tdb.remove('post_voters_' + str(3),
+                                            received_via,
+                                            vote['item_id'],
+                                            pub_to_address(msg_data['pub']),
+                                            start_block = blind_credit_block_num,
+                                            as_set_op = True,
+                                            )
+                        except KeyError:
+                            pass
+                    elif vote['direction'] == 3:
+                        try:
+                            self.tdb.remove('post_voters_' + str(-3),
+                                            received_via,
+                                            vote['item_id'],
+                                            creator_address,
+                                            start_block = blind_credit_block_num,
+                                            as_set_op = True,
+                                            )
+                        except KeyError:
+                            pass
+                        try:
+                            self.tdb.remove('post_voters_' + str(-3),
+                                            received_via,
+                                            vote['item_id'],
+                                            pub_to_address(msg_data['pub']),
+                                            start_block = blind_credit_block_num,
+                                            as_set_op = True,
+                                            )
+                        except KeyError:
+                            pass
                     else:
                         assert False, vote['direction']
 
@@ -928,6 +972,34 @@ class CCCoinCore:
                                        blind_credit_block_num,
                                        )
                         self.tdb.store('unblinded_flags',
+                                       received_via,
+                                       pub_to_address(creator_pub) + '|' + vote['item_id'],
+                                       vote['direction'],
+                                       blind_credit_block_num,
+                                       )
+                        
+                    elif vote['direction'] == 3:
+                        self.tdb.store('unblinded_approvals',
+                                       received_via,
+                                       creator_pub + '|' + vote['item_id'],
+                                       vote['direction'],
+                                       blind_credit_block_num,
+                                       )
+                        self.tdb.store('unblinded_approvals',
+                                       received_via,
+                                       pub_to_address(creator_pub) + '|' + vote['item_id'],
+                                       vote['direction'],
+                                       blind_credit_block_num,
+                                       )
+                        
+                    elif vote['direction'] == -3:                        
+                        self.tdb.store('unblinded_approvals',
+                                       received_via,
+                                       creator_pub + '|' + vote['item_id'],
+                                       vote['direction'],
+                                       blind_credit_block_num,
+                                       )
+                        self.tdb.store('unblinded_approvals',
                                        received_via,
                                        pub_to_address(creator_pub) + '|' + vote['item_id'],
                                        vote['direction'],
@@ -1353,7 +1425,7 @@ class CCCoinCore:
         }
         """
         
-        print ('START_UNBLIND_ACTION')
+        print ('START_UNBLIND_ACTION', msg_data)
         
         tracking_id = self.DBL['RUN_ID'] + '|' + str(self.DBL['TRACKING_NUM'].increment())
         
@@ -1519,18 +1591,20 @@ class CCCoinCore:
         rr = [y for x,y in rr]
         
         ## Flag filter:
-        
-        if web_node_flag_accounts:
-            rr2 = []
-            for the_item in the_items['items']:
-                for xacc in web_node_flag_accounts:
-                    if not self.cccoin.tdb.lookup('unblinded_flags',
-                                                  T_ANY_FORK,
-                                                  xacc + '|' + the_item['post_id'],
-                                                  default = False,
-                                                  )[0] == 2:                    
-                        rr2.append(the_item)
-            rr = rr2
+
+        if False:
+            ## Moved to index.html
+            if web_node_flag_accounts:
+                rr2 = []
+                for the_item in rr:
+                    for xacc in web_node_flag_accounts:
+                        if not self.tdb.lookup('unblinded_flags',
+                                               T_ANY_FORK,
+                                               xacc + '|' + the_item['post_id'],
+                                               default = False,
+                                               )[0] == 2:                    
+                            rr2.append(the_item)
+                rr = rr2        
         
         ## Done:
         

@@ -85,7 +85,7 @@ module.exports = exports = {
       // Doesn't strictly need to be signed again, because the hash can just be looked up in the DB...:
       // But we sign it anyway, in case DB lookups become problematic:
 
-      console.log('sign_unblind');
+      console.log('sign_unblind', item_string);
 
       const dd3 = JSON.stringify({
         command: 'unblind',

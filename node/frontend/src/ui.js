@@ -77,6 +77,7 @@ module.exports = exports = {
     const $upvoteButton = $(`#vote_${postId}_1`);
     const $downvoteButton = $(`#vote_${postId}_-1`);
     const $flagButton = $(`#vote_${postId}_2`);
+    const $approveButton = $(`#vote_${postId}_3`);
     const $powSpan = $(`#vote_${postId}_pow`);
     const $trendContainer = $powSpan.parent();
 
@@ -122,6 +123,14 @@ module.exports = exports = {
         exports.toggle_button_state($flagButton)
         if (exports.get_button_state($flagButton) === false) {
           out_direction = -2;
+        }
+      }
+	
+      case 3: {
+        // approve button clicked
+        exports.toggle_button_state($approveButton)
+        if (exports.get_button_state($approveButton) === false) {
+          out_direction = -3;
         }
       }
     }

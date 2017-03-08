@@ -387,11 +387,13 @@ class Application(tornado.web.Application):
                  cccoin,
                  image_proxy_path,
                  web_node_flag_accounts,
+                 web_node_approval_accounts,
                  ):
 
         self.the_cccoin = cccoin
         self.image_proxy_path = image_proxy_path
         self.web_node_flag_accounts = web_node_flag_accounts
+        self.web_node_approval_accounts = web_node_approval_accounts
         static_dir = join(dirname(__file__), 'frontend', 'static')
 
         handlers = [(r'/',handle_front,),
@@ -563,7 +565,7 @@ class handle_front(BaseHandler):
         increment = intget(self.get_argument('increment','50'), 50) or 50
         sort_by = self.get_argument('sort', 'trending')
         
-        if 'address' not in session:
+        if session and ('address' not in session):
             session['address'] = pub_to_address(session['pub'])
         
         the_items = self.cccoin.get_sorted_posts(filter_users = filter_users,
@@ -571,7 +573,6 @@ class handle_front(BaseHandler):
                                                  sort_by = sort_by,
                                                  offset = offset,
                                                  increment = 1000,
-                                                 web_node_flag_accounts = self.application.web_node_flag_accounts,
                                                  )
         
         num_items = len(the_items['items'])
@@ -797,6 +798,7 @@ class handle_track(BaseHandler):
 def inner_start_web(cccoin,
                     image_proxy_path = False,
                     web_node_flag_accounts = [],
+                    web_node_approval_accounts = [],
                     port = 50000,
                     ):
     
@@ -807,6 +809,7 @@ def inner_start_web(cccoin,
         http_server = HTTPServer(Application(cccoin,
                                              image_proxy_path,
                                              web_node_flag_accounts,
+                                             web_node_approval_accounts,
                                              ),
                                  xheaders=True,
                                  )

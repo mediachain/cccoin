@@ -140,8 +140,13 @@
 		.dropdown-content li>a, .dropdown-content li>span {color: #ee6e73 !important; }
 		
 		.material-icons.active { color: #ee6e73 !important; }
+		
+		.approve-button.active { color: #0f0 !important; }
+		.approve-button.inactive {color: #eeeeee !important;}
+		
 		.flag-button.active { color: #ffeb3b !important; }
 		.flag-button.inactive {  color: #eeeeee !important; }
+		
 		[type="checkbox"]:checked+label:before {border-right: 2px solid #ee6e73 !important; border-bottom: 2px solid #ee6e73 !important;}
 		
 		#main_nav.fixednav{position:fixed !important;z-index:10;background:#fff !important;top:0;left:0;right:0;}
@@ -258,11 +263,17 @@
 			<!-- START TAB -->
 			<div id="test1" class="">
 
-				<div id="card-grid" class="row" style="margin-top:0;">
+	
+                          <div id="card-grid" class="row" style="margin-top:0;">
 				  
 					{% for c, the_item in enumerate(the_items['items'] ) %}
-
 					
+					{% set is_nuked = max([handler.cccoin.tdb.lookup('unblinded_flags',T_ANY_FORK, xacc + '|' + the_item['post_id'],default = False,)[0] == 2 for xacc in handler.application.web_node_flag_accounts ]) %}
+
+					{% set is_approved = (not handler.application.web_node_approval_accounts) or max([handler.cccoin.tdb.lookup('unblinded_flags',T_ANY_FORK, xacc + '|' + the_item['post_id'],default = False,)[0] == 2 for xacc in handler.application.web_node_approval_accounts ]) %}
+					
+					{% if (not is_nuked) or (session and session['address'] in handler.application.web_node_flag_accounts) %}
+					{% if is_approved or (session and session['address'] in handler.application.web_node_approval_accounts) %}
 					<!-- START CARD -->
 					<div class="card_item">
 						<div class="card" id="card-{{ the_item['post_id'] }}">
@@ -312,26 +323,43 @@
 			  <span id="vote_{{ the_item['post_id'] }}_pow">
 			    {{ '%.2f' % (handler.cccoin.tdb.lookup('scores',T_ANY_FORK, the_item['status']['creator_pub'] + '|' + the_item['post_id'],default = 0)[0]) }}
 			  </span> CCC			  
-			  
+			  {{ is_nuked and '(nuked)' }}
 			  {% comment the_item['status'] %}
 			  {% comment repr(handler.cccoin.block_details)[:150] %}
 			  {% comment handler.cccoin.cw.block_details.get(the_item['status']['created_block_num']) %}
 			  <i class="trend-up material-icons red-text text-lighten-1" style="font-size:15px;display:none;">arrow_upward</i>
 			  <i class="trend-down material-icons blue-text text-lighten-1" style="font-size:15px;display:none;">arrow_downward</i>
 			</span>
-										<!-- &#8353; -->
-										{% if session %}
-										{% comment set is_flagged = (all_dbs['DIRECT']['flags'].get((session['pub'], the_item['post_id'])) == 2) or (all_dbs['BLOCKCHAIN_CONFIRMED']['flags'].get((session['pub'], the_item['post_id'])) == 2) %}
-										{% set is_flagged = (handler.cccoin.tdb.lookup('unblinded_flags', T_ANY_FORK, session['pub'] + '|' + the_item['post_id'], default = False)[0] == 2) %}
-										{% else %}
-										{% set is_flagged = False %}
-										{% end %}
-										<a href="#"
-										   onclick="do_vote('{{ the_item['post_id'] }}',2); return false;"
-										   style="float:right;"><i id="vote_{{ the_item['post_id'] }}_2"
-																   class="material-icons flag-button {{ is_flagged and 'active' or 'inactive' }} white"
-													   >flag</i></a>
-										
+			<!-- &#8353; -->
+			
+			
+			{% if session %}
+			{% comment set is_flagged = (all_dbs['DIRECT']['flags'].get((session['pub'], the_item['post_id'])) == 2) or (all_dbs['BLOCKCHAIN_CONFIRMED']['flags'].get((session['pub'], the_item['post_id'])) == 2) %}
+			{% set is_flagged = (handler.cccoin.tdb.lookup('unblinded_flags', T_ANY_FORK, session['pub'] + '|' + the_item['post_id'], default = False)[0] == 2) %}
+			{% else %}
+			{% set is_flagged = False %}
+			{% end %}
+			<a href="#"
+			   onclick="do_vote('{{ the_item['post_id'] }}',2); return false;"
+			   style="float:right;"><i id="vote_{{ the_item['post_id'] }}_2"
+				class="material-icons flag-button {{ is_flagged and 'active' or 'inactive' }} white"
+						   >flag</i></a>
+
+			
+			{% if session %}
+			{% set is_approved = (handler.cccoin.tdb.lookup('unblinded_approvals', T_ANY_FORK, session['pub'] + '|' + the_item['post_id'], default = False)[0] == 3) %}
+			{% else %}
+			{% set is_approved = False %}
+			{% end %}
+
+			{% if session and (session['address'] in handler.application.web_node_approval_accounts) %}
+			<a href="#"
+			   onclick="do_vote('{{ the_item['post_id'] }}',3); return false;"
+			   style="float:right;"><i id="vote_{{ the_item['post_id'] }}_3"
+				class="material-icons approve-button {{ is_approved and 'active' or 'inactive' }} white"
+						   >done</i></a>
+			{% end %}
+			
 			<table style="border-top:1px solid #eee">
 			  <tbody>
 			    
@@ -380,6 +408,8 @@
 						</div>
 					</div>
 					<!-- END CARD -->
+					{% end %}
+					{% end %}
 					{% end %}
 
 				</div>
@@ -639,7 +669,9 @@
   <div class="container">
     <div class="row valign-wrapper">
       <div class="col s12 center-align">
-	  Your Address: {{ session['address'] }}
+	{% if session %}
+	   Your Address: {{ session['address'] }}
+	{% end %}
       </div>
     </div>
     <div class="row valign-wrapper">
