@@ -772,10 +772,10 @@ class CCCoinCore:
                     ## Record {(voter, item_id) -> direction} present lookup:
                     
                     #the_db['scores'][vote['item_id']] = the_db['scores'].get(vote['item_id'], 0) + vote['direction'] ## TODO - Not thread safe.
-
+                    
                     #(received_via == 'BLOCKCHAIN_CONFIRMED') and 
                     if (int(vote['direction']) in [-1, 1, 0]):
-                    
+                        
                         with self.tdb.the_lock:
                             
                             cur_dir = self.tdb.lookup('post_voters_' + str(int(vote['direction'])),

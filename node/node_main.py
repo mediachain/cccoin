@@ -8,8 +8,7 @@ from os import environ
 
 TEST_MODE = False
 
-#REWARDS_ACCOUNT = '0x4effded5ac372ec3318142de763d553ca444c1c6'
-REWARDS_ACCOUNT = False
+REWARDS_ACCOUNT = environ.get('REWARDS_ACCOUNT', False)
 
 ## Just for your web node, assign special flagging visibility power to some users:
 WEB_NODE_FLAG_ACCOUNTS = environ.get('WEB_NODE_FLAG_ACCOUNTS', '').split(',')
@@ -17,12 +16,8 @@ WEB_NODE_FLAG_ACCOUNTS = environ.get('WEB_NODE_FLAG_ACCOUNTS', '').split(',')
 ## Just for your web node, one of these must first approve all visible posts:
 WEB_NODE_APPROVAL_ACCOUNTS = environ.get('WEB_NODE_FLAG_ACCOUNTS', '').split(',')
 
-## Flagging just for this web node:
-SUPER_FLAGGER = False
-
 ## See cccoin/docs/nginx_config for nginx setup, or set to False to disable.:
-IMAGE_PROXY_PATH = '/images/'
-#IMAGE_PROXY_PATH = False
+IMAGE_PROXY_PATH = environ.get('IMAGE_PROXY_PATH', False)
 
 DATA_DIR = 'build_contracts/'
 
@@ -36,13 +31,13 @@ from node_contract import DEFAULT_RPC_HOST, DEFAULT_RPC_PORT
 
 ## Rewards parameters:
 
-CORE_SETTINGS = {'REWARDS_CURATION':90.0,     ## Voting rewards
-                 'REWARDS_WITNESS':10.0,      ## Witness rewards
-                 'REWARDS_SPONSOR':10.0,      ## Web nodes that cover basic GAS / TOK for users on their node.
+CORE_SETTINGS = {'REWARDS_CURATION':49.0,     ## Voting rewards
+                 'REWARDS_WITNESS':49.0,      ## Witness rewards
+                 'REWARDS_SPONSOR':5.0,      ## Web nodes that cover basic GAS / TOK for users on their node.
                  'REWARDS_POSTER_MULT':1,     ## Reward / penalize the poster as if he were this many voters.
                  'REWARDS_CUTOFF':0.95,       ## Percent of total owed rewards to send in each round. Avoids dust.
                  'MIN_REWARD_LOCK':1,         ## Minimum number of LOCK that will be paid as rewards.
-                 'REWARDS_FREQUENCY':140,     ## 140 blocks = 7 hours
+                 'REWARDS_FREQUENCY':1,       ## In blocks. 1 block = ~13 seconds
                  'REWARDS_LOCK_INTEREST_RATE':1.0,   ## Annual interest rate paid to LOCK holders.
                  'MAX_UNBLIND_DELAY':20,      ## Max number of blocks allowed between submitting a blind vote & unblinding.
                  'MAX_GAS_DEFAULT':10000,     ## Default max gas fee per contract call.
