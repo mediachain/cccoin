@@ -1548,7 +1548,6 @@ class CCCoinCore:
                         else:
                             rr[block_num][aa] = bb
         rr = sorted(rr.items(), reverse = True)
-        print 'RR',rr
         return rr
         
     def get_sorted_posts(self,

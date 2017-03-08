@@ -376,9 +376,13 @@
 			    
 			    {% set hist = handler.cccoin.get_vote_history(the_item['post_id']) %}
 			    {% set cnt = 0 %}
+			    {% set done_hist = set() %}
+
 			      {% for cc, (block_num,xx) in enumerate(hist) %}
 			      {% for user_id, the_action in xx.items() %}
 			    {% set cnt += 1 %}
+			    {% if (user_id, the_action) not in done_hist %}
+			    {% set _ = done_hist.add((user_id, the_action)) %}
  			      <tr class="hist_{{ the_item['post_id'] }}" style="{{ cnt > 5 and 'display:none;' or '' }}">
  				<td style="width:32px;display:none;"><a href="" class="black-text">#{{ block_num }}</a></td>		
  				<td style="vertical-align:top;width:32px;">				  
@@ -399,6 +403,7 @@
 				  {{ htime_ago(handler.cccoin.block_details.get(block_num,{'timestamp':time()})['timestamp']) }}
  				</td>		
  			      </tr>
+			      {% end %}
 			      {% end %}
 			      {% end %}
 			    {% if len(hist) > 5 %}
