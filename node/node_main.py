@@ -19,6 +19,10 @@ WEB_NODE_APPROVAL_ACCOUNTS = environ.get('WEB_NODE_FLAG_ACCOUNTS', '').split(','
 ## See cccoin/docs/nginx_config for nginx setup, or set to False to disable.:
 IMAGE_PROXY_PATH = environ.get('IMAGE_PROXY_PATH', False)
 
+## Set to root url of mediachain http api, e.g. `http://localhost:9002` to enable
+## writing to mediachain when a post is confirmed by the blockchain
+MC_API_URL = environ.get('MEDIACHAIN_API_URL', False)
+
 DATA_DIR = 'build_contracts/'
 
 DEPLOY_WITH_TRUFFLE = True
@@ -518,8 +522,9 @@ def start_inner(mode,
     cccoin = CCCoinCore(contract_wrapper = cw,
                         settings_rewards = CORE_SETTINGS,
                         mode = mode,
-                        ) 
-    
+                        mediachain_api_url=MC_API_URL,
+                        )
+
     cw.start_contract_thread(start_in_foreground = (mode != 'web'),
                              terminate_on_exception = (mode != 'web'),
                              )
