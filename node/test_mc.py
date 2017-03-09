@@ -15,7 +15,6 @@ from tornado.ioloop import IOLoop
 # pytest fixture configuration (see conftest.py)
 
 contract_args = {'start_at_current_block': True, 'settings_confirm_states': {'BLOCKCHAIN_CONFIRMED':1}}
-cccoin_core_args = {'write_to_mc': True}
 
 @pytest.fixture
 def mc_node_url(tmpdir):

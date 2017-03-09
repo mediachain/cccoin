@@ -203,7 +203,7 @@ class CCCoinCore:
                  fake_id_testing_mode = False,
                  settings_rewards = {},
                  genesis_users = [],
-                 write_to_mc = False,
+                 mediachain_api_url = False,
                  ):
         """
         Note: Either `the_code` or `the_address` should be supplied to the contract.
@@ -223,9 +223,9 @@ class CCCoinCore:
         assert settings_rewards
         
         self.rw = settings_rewards
-        
-        if write_to_mc:
-            self.mcq = MediachainQueue(default_namespace = 'cccoin')
+
+        if mediachain_api_url:
+            self.mcq = MediachainQueue(mc_api_url=mediachain_api_url, default_namespace = 'cccoin')
         else:
             self.mcq = False
         
