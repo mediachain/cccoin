@@ -661,7 +661,9 @@
 			<div class="input-field col s12">
 				<input type="checkbox" id="tos_agree_checkbox">
 				<label for="tos_agree_checkbox">
-					I have read and agreed to the <a target="_blank" href="/terms-of-service">Terms of Service and Privacy Agreement</a>
+					I have read and agreed to the
+					<a target="_blank" href="{{ handler.static_url('terms-of-service.html') }}">Terms of Service</a>
+					and <a target="_blank" href="{{ handler.static_url('privacy-policy.html') }}">Privacy Agreement</a>
 				</label>
 			</div>
 		</div>
@@ -699,7 +701,7 @@
 	<span style="margin-left: 15px;">© Mediachain Labs</span>
 	<a href="{{ handler.static_url('terms-of-service.html') }}" style="margin-left: 15px;" class="red-text">Terms of Service</a>
 	<a href="{{ handler.static_url('privacy-policy.html') }}" style="margin-left: 15px;" class="red-text">Privacy Policy</a>
-	<a href="/copyright-policy" style="margin-left: 15px;" class="red-text">DMCA Copyright Policy</a>
+	<a href="{{ handler.static_url('copyright-policy.html') }}" style="margin-left: 15px;" class="red-text">DMCA Copyright Policy</a>
       </div>
       
     </div>
