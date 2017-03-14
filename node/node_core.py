@@ -197,10 +197,9 @@ def event_sig_to_topic_id(sig):
 class CCCoinCore:
     
     def __init__(self,
-                 contract_wrapper = False,
+                 state_manager,
+                 #contract_wrapper = False,
                  mode = 'web',
-                 offline_testing_mode = False,
-                 fake_id_testing_mode = False,
                  settings_rewards = {},
                  genesis_users = [],
                  mediachain_api_url = False,
@@ -219,7 +218,7 @@ class CCCoinCore:
         """
         
         assert mode in ['web', 'rewards', 'audit']
-
+        
         assert settings_rewards
         
         self.rw = settings_rewards
@@ -231,11 +230,31 @@ class CCCoinCore:
         
         self.mode = mode
 
+        self.genesis_users = genesis_users
+
+        
+        ## Local state for this web node, that shouldn't be written to the blockchain:
+        
+        manager = multiprocessing.Manager()
+        
+        self.DBL = {}
+        
+        self.DBL['RUN_ID'] = get_random_bytes(32).encode('hex')
+        
+        self.DBL['TRACKING_NUM'] = SharedCounter()
+        
+        self.DBL['LATEST_NONCE'] = manager.dict() ## {api_key:nonce}
+        
+        self.DBL['CHALLENGES_DB'] = manager.dict() ## {'address':challenge}
+
+        self.DBL['SEEN_USERS_DB'] = manager.dict() ## {'address':1}
+        
+        self.DBL['all_dbs'] = {}
+        
+        """
         self.fake_id_testing_mode = fake_id_testing_mode
         
         self.offline_testing_mode = offline_testing_mode
-
-        self.genesis_users = genesis_users
 
         self.cw = contract_wrapper
 
@@ -322,6 +341,7 @@ class CCCoinCore:
         ####
         
         self.block_details = {}
+        """
         
         #### STATE SNAPSHOTS FOR OLD BLOCKS:
 
@@ -329,7 +349,9 @@ class CCCoinCore:
         
         ## {block_num: {blind_hash:(voter_id, item_id)}}
         
-        self.tdb = TemporalDB(table_names = ['unblinded_votes',
+        self.sdb = state_manager
+        
+        self.sdb.setup_tables(table_names = ['unblinded_votes',
                                              'unblinded_flags',
                                              'unblinded_approvals',
                                              'min_lock_per_user',
@@ -351,67 +373,14 @@ class CCCoinCore:
                                              'blind_lookup',
                                              'blind_lookup_rev',
                                              ],
-                              master_fork_name = 'BLOCKCHAIN_CONFIRMED',
-                              fork_names = self.cw.confirm_states.keys() + ['DIRECT'],
                               )
-
-        self.tdb.all_update_latest_master_block_num(self.cw.c.eth_blockNumber())
-    
-    def test_feed_round(self, actions):
-        """
-        Convenience testing function.
-        - Accepts a list of actions for the current rewards round.
-        - Allows use of fake user_ids and item_ids.
-        - Generates keys for unseen users on the fly.
-        """
         
-        self.fake_id_testing_mode = True
+        self.sdb.setup_logic_callback(logic_callback = self.process_event)
         
-        for action in actions:
             
-            self.feed_history.append(action)
-            
-            if action['user_id'] not in self.map_fake_to_real_user_ids:
-                the_pw = str(action['user_id'])
-                priv = btc.sha256(the_pw)
-                pub = btc.privtopub(priv)
-                self.map_fake_to_real_user_ids[action['user_id']] = {'priv': priv, 'pub':pub}
-                self.map_real_to_fake_user_ids[pub] = action['user_id']
-            
-            uu = self.map_fake_to_real_user_ids[action['user_id']]
-            priv = uu['priv']
-            pub = uu['pub']
-            
-            if action['action'] == 'post':
-
-                blind_post, unblind_post = client_post(action.get('image_url','NO_URL'), ## Optional for testing
-                                                       action.get('image_title','NO_TITLE'),
-                                                       priv,
-                                                       pub,
-                                                       use_id = action['use_id'],
-                                                       )
-                self.submit_blind_action(blind_post)
-                yy = self.submit_unblind_action(unblind_post)
-            
-            elif action['action'] == 'vote':
-                
-                blind_vote, unblind_vote = client_vote(action['item_id'],
-                                                       action['direction'],
-                                                       priv,
-                                                       pub,
-                                                       )
-                
-                self.submit_blind_action(blind_vote)
-                self.submit_unblind_action(unblind_vote)
-            
-            else:
-                assert False, action
-        
-        self.cw.loop_once()        
-    
     def process_lockup(self,
-                       received_via,
-                       block_num,
+                       is_pending,
+                       block_hash,
                        recipient,
                        amount_tok,
                        final_tok,
@@ -423,22 +392,23 @@ class CCCoinCore:
 
         ## Update minimal LOCK at each block:
         
-        self.tdb.store('min_lock_per_user',
-                       received_via,
+        self.sdb.store('min_lock_per_user',
                        recipient,
                        min(final_lock,
-                           self.tdb.lookup('min_lock_per_user',
-                                           'BLOCKCHAIN_CONFIRMED',
+                           self.sdb.lookup('min_lock_per_user',
                                            recipient,
-                                           end_block = block_num,
                                            default = maxint,
+                                           at_hash = block_hash,
+                                           #block_offset = -self.rw['MAX_UNBLIND_DELAY'],
+                                           allow_pending = is_pending,
                                            )[0],
                            ),
-                       block_num,
+                       cur_hash = block_hash,
+                       is_pending = is_pending,
                        )
     
     def process_mint(self,
-                     received_via,
+                     is_pending,
                      msg_block_num,
                      reward_tok,
                      reward_lock,
@@ -457,25 +427,21 @@ class CCCoinCore:
 
         event MintEvent(uint reward_tok, uint reward_lock, address recipient, uint block_num, uint rewards_freq, uint tot_tok, uint tot_lock, uint current_tok, uint current_lock, uint minted_tok, uint minted_lock);
         """
-        self.tdb.store('paid_rewards_lock',
-                       received_via,
+        self.sdb.store('paid_rewards_lock',
                        user_id,
                        max(minted_lock,
-                           self.tdb.lookup('paid_rewards_lock',
-                                           received_via,
+                           self.sdb.lookup('paid_rewards_lock',
                                            user_id,
-                                           end_block = block_num,
                                            default = 0,
+                                           #block_offset = -self.rw['MAX_UNBLIND_DELAY'],
+                                           at_hash = block_hash,
+                                           allow_pending = is_pending,
                                            )[0],
                            ),
-                       block_num,
+                       cur_hash = block_hash,
+                       is_pending = is_pending,
                        )
-
-    def process_reorg(self, start_block):
-        """ Got reorg. Wipe all state from that point forward. """
-        self.tdb.all_wipe_newer(T_ANY_FORK, start_block)
-        self.latest_block_number = max(0, start_block - 1)
-        
+    
     def process_event(self, msg, *args, **kw):
         """
         Proxy event to appropriate handler based on topic id.
@@ -507,8 +473,8 @@ class CCCoinCore:
         
     def process_thelog(self,
                        msg,
-                       received_via,
-                       receipt = False,
+                       is_noop = False,                      ## New block received, but had no event logs of any type.
+                       is_pending = False,                   ## Update came from pending transaction.
                        do_verify = True,
                        ):
         """
@@ -559,42 +525,21 @@ class CCCoinCore:
         
         """
         
-        if received_via == 'DIRECT':
-
+        if is_pending:
             payload_decoded = loads_compact(msg['payload'])
             msg_data = msg
             msg = {'data':msg}
-            msg['blockNumber'] = self.cw.c.eth_blockNumber()
-            
-        elif received_via in ['BLOCKCHAIN_CONFIRMED', 'BLOCKCHAIN_PENDING']:
-            
-            msg['data'] = solidity_string_decode(msg['data'])
-            msg['blockNumber'] = ethereum.utils.parse_int_or_hex(msg['blockNumber'])
-            msg["logIndex"] = ethereum.utils.parse_int_or_hex(msg['logIndex'])
-            msg["transactionIndex"] = ethereum.utils.parse_int_or_hex(msg['transactionIndex'])
+            msg['blockNumber'] = False
+        else:
             msg_data = loads_compact(msg['data'])
             payload_decoded = loads_compact(msg_data['payload'])
-            
-        else:
-            assert False, repr(received_via)
-
-
-        if msg['blockNumber'] not in self.block_details:
-
-            rh = self.cw.c.eth_getBlockByNumber(msg['blockNumber'])
-
-            ## Strip down to just a couple fields:
-            
-            xh = {'timestamp':ethereum.utils.parse_int_or_hex(rh['timestamp'])}
-            
-            self.block_details[msg['blockNumber']] = xh
-        
-        print ('====PROCESS_EVENT:', received_via)
+                
+        print ('====PROCESS_EVENT:', is_pending)
         print json.dumps(msg, indent=4)
 
+        #payload_decoded['nonce'] = False ## TODO, make nonce in user's browser.
+        assert 'nonce' in payload_decoded
 
-        the_db = self.DBL['all_dbs'][received_via]
-                
         if do_verify:
             is_success = btc.ecdsa_raw_verify(btc.sha256(msg_data['payload'].encode('utf8')),
                                               (msg_data['sig']['sig_v'],
@@ -604,8 +549,7 @@ class CCCoinCore:
                                               msg_data['pub'],
                                               )
             assert is_success, 'MESSAGE_VERIFY_FAILED'
-
-
+        
         item_ids = [] ## For commands that create new items.
 
         creator_pub = msg_data['pub']
@@ -614,10 +558,9 @@ class CCCoinCore:
 
         #creator_address = '0x' + sha3_256(msg_data['pub'])[-20:].encode('hex')
         #creator_address = msg_data['pub'][:20]
-        #creator_address = pub_to_address(creator_pub)
-        creator_address = msg_data['pub']
+        creator_address = pub_to_address(creator_pub)
+        #creator_address = msg_data['pub']
         creator_pub = msg_data['pub']
-            
         
         if payload_decoded['command'] == 'balance':
             
@@ -629,37 +572,27 @@ class CCCoinCore:
             
         elif payload_decoded['command'] == 'blind':
             
-            if received_via == 'BLOCKCHAIN_CONFIRMED':
-                
-                ## Just save earliest blinding blockNumber for later:
-                ## TODO: save token balance at this time.
-                
-                #if msg['blockNumber'] not in self.blind_lookup:
-                #    self.blind_lookup[msg['blockNumber']] = set()
-                #self.blind_lookup[msg['blockNumber']].add(payload_decoded['blind_hash'])
-                
-                #if payload_decoded['blind_hash'] not in self.blind_lookup_rev:
-                #    self.blind_lookup_rev[payload_decoded['blind_hash']] = msg['blockNumber']
-                    
-                self.tdb.store('blind_lookup',
-                               received_via,
-                               payload_decoded['blind_hash'],
-                               msg['blockNumber'],
-                               start_block = msg['blockNumber'], ## TODO, blind block
-                               )
-
-                    
+            self.sdb.store('blind_lookup',
+                           payload_decoded['blind_hash'],
+                           msg['blockHash'], #msg['blockNumber'],
+                           is_pending = is_pending,
+                           cur_hash = msg['blockHash'],
+                           nonce = payload_decoded['nonce'],
+                           #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                           #is_pending_timeout = False,
+                           #is_pending_replaces_nonce = False,
+                           )
+        
         elif payload_decoded['command'] == 'unblind':
-
+            
             print ('====COMMAND_UNBLIND:', payload_decoded)
             
             payload_inner = loads_compact(payload_decoded['blind_reveal'])
-
-
+            
             ## Check that reveal matches supposed blind hash:
 
             hsh = btc.sha256(payload_decoded['blind_reveal'].encode('utf8'))
-
+            
             hash_fail = False
             
             if payload_decoded['blind_hash'] != hsh:
@@ -676,36 +609,48 @@ class CCCoinCore:
             ##   TODO: limit how far back blinding can go?
             ##   TODO: if rewards period for that block already passed, move credit to later block?
 
-            blind_credit_block_num = self.tdb.lookup('blind_lookup',
-                                                     T_ANY_FORK,
-                                                     payload_decoded['blind_hash'],
-                                                     default = msg['blockNumber'],
-                                                     )[0]
+            blind_credit_block_hash = self.sdb.lookup('blind_lookup',
+                                                      payload_decoded['blind_hash'],
+                                                      at_hash = msg['blockHash'],
+                                                      default = msg['blockNumber'],
+                                                      allow_pending = True,
+                                                      )#[0]
             
             print ('PAYLOAD_INNER:', payload_inner)
 
             if payload_decoded['item_type'] == 'username':
                 
-                print ('====USERNAME_REQUEST', received_via, payload_inner['username'])
+                print ('====USERNAME_REQUEST', is_pending, payload_inner['username'])
+
+                username_norm = payload_inner['username'].strip()[:25]
                 
-                with self.tdb.the_lock:
+                if len(username_norm) < 2:
+                    print ('REFUSING_USERNAME', payload_inner['username'])
                     
-                    ## check that no one's confirmed it:
-                    
-                    tm = self.tdb.lookup('user_id_to_username',
-                                         T_ANY_FORK,
-                                         msg_data['pub'],
-                                         default = False,
-                                         )[0]
-                    
-                    if tm is False:
-                        self.tdb.store('user_id_to_username',
-                                       received_via,
-                                       msg_data['pub'],
-                                       payload_inner['username'][:25],
-                                       start_block = blind_credit_block_num,
-                                       )
-                    #print 'PUB', msg_data['pub']
+                else:
+                    with self.sdb.the_lock:
+
+                        ## check that no one's confirmed it:
+
+                        tm = self.sdb.lookup('user_id_to_username',
+                                             creator_address,
+                                             at_hash = msg['blockHash'],
+                                             default = False,
+                                             allow_pending = True,
+                                             )#[0]
+
+                        if tm is False:
+                            self.sdb.store('user_id_to_username',
+                                           creator_address,
+                                           username_norm,
+                                           cur_hash = blind_credit_block_hash, #msg['blockHash'],
+                                           nonce = payload_decoded['nonce'],
+                                           is_pending = is_pending,
+                                           #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                           #is_pending_timeout = False,
+                                           #is_pending_replaces_nonce = False,
+                                           )
+                        #print 'PUB', msg_data['pub']
             
             elif payload_decoded['item_type'] == 'posts':
                 
@@ -734,30 +679,34 @@ class CCCoinCore:
                                       'created_block_num':False, ## Filled in when confirmed via blockchain
                                       #'score':1,
                                       #'score_weighted':1,
-                                      'creator_address':creator_pub[:20], ## TEMP
+                                      'creator_address':creator_address,#creator_pub[:20], ## TEMP
                                       'creator_pub':creator_pub,
                                       }
-
+                    
                     self.posts_by_post_id[post_id] = post                        
-
-                    if received_via != 'DIRECT':
+                    
+                    if not is_pending:
                         
                         post['status']['confirmed'] = True
-                        post['status']['created_block_num'] = blind_credit_block_num
-                        post['status']['created_time'] = self.block_details.get(blind_credit_block_num,
-                                                                                {'timestamp':int(time())},
-                                                                                )['timestamp']
+                        post['status']['created_block_hash'] = blind_credit_block_hash
+                        post['status']['created_time'] = self.sdb.block_details.get(blind_credit_block_hash,
+                                                                                    {'timestamp':int(time())},
+                                                                                    )['timestamp']
                         
-                    self.tdb.store('posts',
-                                   received_via,
+                    self.sdb.store('posts',
                                    post['post_id'],
                                    post,
-                                   start_block = blind_credit_block_num,
+                                   cur_hash = blind_credit_block_hash, #msg['blockHash'],
+                                   nonce = payload_decoded['nonce'],
+                                   is_pending = is_pending,
+                                   #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                   #is_pending_timeout = False,
+                                   #is_pending_replaces_nonce = False,                                      
                                    )
                     
                     ## Write to mediachain:
                     
-                    if received_via == 'BLOCKCHAIN_CONFIRMED':
+                    if not is_pending:
                         if self.mcq is not False:
                             self.mcq.push(data = msg,
                                           refs = post['post_id'],
@@ -767,22 +716,18 @@ class CCCoinCore:
                 
                 for vote in payload_inner['votes']:
                     
-                    #print ('!!!INCREMENT', vote['item_id'], the_db['scores'].get(vote['item_id']))
-                    
                     ## Record {(voter, item_id) -> direction} present lookup:
                     
-                    #the_db['scores'][vote['item_id']] = the_db['scores'].get(vote['item_id'], 0) + vote['direction'] ## TODO - Not thread safe.
-                    
-                    #(received_via == 'BLOCKCHAIN_CONFIRMED') and 
                     if (int(vote['direction']) in [-1, 1, 0]):
                         
-                        with self.tdb.the_lock:
+                        with self.sdb.the_lock:
                             
-                            cur_dir = self.tdb.lookup('post_voters_' + str(int(vote['direction'])),
-                                                      received_via,
-                                                      creator_pub + '|' + vote['item_id'],
+                            cur_dir = self.sdb.lookup('post_voters_' + str(int(vote['direction'])),
+                                                      creator_address + '|' + vote['item_id'],
                                                       default = 0,
-                                                      )[0]
+                                                      at_hash = msg['blockHash'],
+                                                      allow_pending = True,
+                                                      )#[0]
                             
                             if cur_dir == -1:
                                 if vote['direction'] == -1:
@@ -806,148 +751,174 @@ class CCCoinCore:
                                 elif vote['direction'] == 1:
                                     out_dir = 0
                             
-                            cur_score = self.tdb.lookup('scores',
-                                                        received_via,
-                                                        creator_pub + '|' + vote['item_id'],
+                            cur_score = self.sdb.lookup('scores',
+                                                        creator_address + '|' + vote['item_id'],
                                                         default = 0,
-                                                        )[0]
+                                                        at_hash = msg['blockHash'],
+                                                        allow_pending = True,
+                                                        )#[0]
                             
-                            self.tdb.store('scores',
-                                           received_via,
-                                           creator_pub + '|' + vote['item_id'],
+                            self.sdb.store('scores',
+                                           vote['item_id'],
                                            cur_score + out_dir,
-                                           start_block = blind_credit_block_num,
+                                           cur_hash = msg['blockHash'],
+                                           nonce = False,
+                                           is_pending = is_pending,
+                                           #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                           #is_pending_timeout = False,
+                                           #is_pending_replaces_nonce = False,
                                            )
                             
-                            cur_score_user = self.tdb.lookup('scores_per_user',
-                                                             received_via,
-                                                             creator_pub,
+                            cur_score_user = self.sdb.lookup('scores_per_user',
+                                                             creator_address,
                                                              default = 0,
-                                                             )[0]
+                                                             at_hash = msg['blockHash'],
+                                                             allow_pending = True,
+                                                             )#[0]
                             
-                            self.tdb.store('scores_per_user',
-                                           received_via,
-                                           creator_pub,
+                            self.sdb.store('scores_per_user',
+                                           creator_address,
                                            cur_score_user + out_dir,
-                                           start_block = blind_credit_block_num,
+                                           cur_hash = msg['blockHash'],
+                                           nonce = False,
+                                           is_pending = is_pending,
+                                           #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                           #is_pending_timeout = False,
+                                           #is_pending_replaces_nonce = False,
                                            )
-                            
-                    ## Record {item_id -> voters} historic lookup:
-
-                    print ('MSG', received_via, msg)
                     
-                    self.tdb.store('post_voters_' + str(int(vote['direction'])),
-                                   received_via,
+                    ## Record {item_id -> voters} historic lookup:
+                    
+                    print ('MSG', is_pending, msg)
+                    
+                    self.sdb.store('post_voters_' + str(int(vote['direction'])),
                                    vote['item_id'],
                                    creator_address,
-                                   start_block = msg['blockNumber'],
+                                   cur_hash = msg['blockHash'], #blind_credit_block_hash,
+                                   nonce = payload_decoded['nonce'],
+                                   is_pending = is_pending,
                                    as_set_op = True,
+                                   #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                   #is_pending_timeout = False,
+                                   #is_pending_replaces_nonce = False,
                                    )
                     
                     if vote['direction'] == -1:
                         try:
-                            self.tdb.remove('post_voters_' + str(1),
-                                            received_via,
+                            self.sdb.remove('post_voters_' + str(1),
                                             vote['item_id'],
                                             creator_address,
-                                            start_block = blind_credit_block_num,
+                                            cur_hash = msg['blockHash'], #blind_credit_block_hash,
+                                            nonce = payload_decoded['nonce'],
+                                            is_pending = is_pending,
                                             as_set_op = True,
+                                            #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                            #is_pending_timeout = False,
+                                            #is_pending_replaces_nonce = False,
                                             )
                         except KeyError:
                             print ('WARN: UNDO VOTE THAT DID NOT EXIST', vote)
                     elif vote['direction'] == 1 :
                         try:
-                            self.tdb.remove('post_voters_' + str(-1),
-                                            received_via,
+                            self.sdb.remove('post_voters_' + str(-1),
                                             vote['item_id'],
                                             creator_address,
-                                            start_block = blind_credit_block_num,
+                                            cur_hash = msg['blockHash'], #blind_credit_block_hash,
+                                            nonce = payload_decoded['nonce'],
+                                            is_pending = is_pending,
                                             as_set_op = True,
+                                            #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                            #is_pending_timeout = False,
+                                            #is_pending_replaces_nonce = False,
                                             )
                         except KeyError:
                             pass
                     elif vote['direction'] == 0:
                         #try:
-                        self.tdb.remove('post_voters_' + str(-1),
-                                        received_via,
+                        self.sdb.remove('post_voters_' + str(-1),
                                         vote['item_id'],
                                         creator_address,
-                                        start_block = blind_credit_block_num,
+                                        cur_hash = msg['blockHash'], #blind_credit_block_hash,
+                                        nonce = payload_decoded['nonce'],
+                                        is_pending = is_pending,
                                         as_set_op = True,
+                                        #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                        #is_pending_timeout = False,
+                                        #is_pending_replaces_nonce = False,
                                         )
                         #except KeyError:
                         #    pass
                         #try:
-                        self.tdb.remove('post_voters_' + str(1),
-                                        received_via,
+                        self.sdb.remove('post_voters_' + str(1),
                                         vote['item_id'],
                                         creator_address,
-                                        start_block = blind_credit_block_num,
+                                        cur_hash = msg['blockHash'], #blind_credit_block_hash,
+                                        nonce = payload_decoded['nonce'],
+                                        is_pending = is_pending,
                                         as_set_op = True,
+                                        #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                        #is_pending_timeout = False,
+                                        #is_pending_replaces_nonce = False,
                                         )
                         #except KeyError:
                         #    pass
                     elif vote['direction'] == -2:
                         try:
-                            self.tdb.remove('post_voters_' + str(2),
-                                            received_via,
+                            self.sdb.remove('post_voters_' + str(2),
                                             vote['item_id'],
                                             creator_address,
-                                            start_block = blind_credit_block_num,
+                                            cur_hash = msg['blockHash'], #blind_credit_block_hash,
+                                            nonce = payload_decoded['nonce'],
+                                            is_pending = is_pending,
                                             as_set_op = True,
+                                            #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                            #is_pending_timeout = False,
+                                            #is_pending_replaces_nonce = False,
                                             )
                         except KeyError:
                             pass
                     elif vote['direction'] == 2:
                         try:
-                            self.tdb.remove('post_voters_' + str(-2),
-                                            received_via,
+                            self.sdb.remove('post_voters_' + str(-2),
                                             vote['item_id'],
                                             creator_address,
-                                            start_block = blind_credit_block_num,
+                                            cur_hash = msg['blockHash'], #blind_credit_block_hash,
+                                            nonce = payload_decoded['nonce'],
+                                            is_pending = is_pending,
                                             as_set_op = True,
+                                            #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                            #is_pending_timeout = False,
+                                            #is_pending_replaces_nonce = False,
                                             )
                         except KeyError:
                             pass
                     elif vote['direction'] == -3:
                         try:
-                            self.tdb.remove('post_voters_' + str(3),
-                                            received_via,
+                            self.sdb.remove('post_voters_' + str(3),
                                             vote['item_id'],
                                             creator_address,
-                                            start_block = blind_credit_block_num,
+                                            cur_hash = msg['blockHash'], #blind_credit_block_hash,
+                                            nonce = payload_decoded['nonce'],
+                                            is_pending = is_pending,
                                             as_set_op = True,
-                                            )
-                        except KeyError:
-                            pass
-                        try:
-                            self.tdb.remove('post_voters_' + str(3),
-                                            received_via,
-                                            vote['item_id'],
-                                            pub_to_address(msg_data['pub']),
-                                            start_block = blind_credit_block_num,
-                                            as_set_op = True,
+                                            #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                            #is_pending_timeout = False,
+                                            #is_pending_replaces_nonce = False,
                                             )
                         except KeyError:
                             pass
                     elif vote['direction'] == 3:
                         try:
-                            self.tdb.remove('post_voters_' + str(-3),
-                                            received_via,
+                            self.sdb.remove('post_voters_' + str(-3),
                                             vote['item_id'],
                                             creator_address,
-                                            start_block = blind_credit_block_num,
+                                            cur_hash = msg['blockHash'], #blind_credit_block_hash,
+                                            nonce = payload_decoded['nonce'],
+                                            is_pending = is_pending,
                                             as_set_op = True,
-                                            )
-                        except KeyError:
-                            pass
-                        try:
-                            self.tdb.remove('post_voters_' + str(-3),
-                                            received_via,
-                                            vote['item_id'],
-                                            pub_to_address(msg_data['pub']),
-                                            start_block = blind_credit_block_num,
-                                            as_set_op = True,
+                                            #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                            #is_pending_timeout = False,
+                                            #is_pending_replaces_nonce = False,
                                             )
                         except KeyError:
                             pass
@@ -958,92 +929,80 @@ class CCCoinCore:
                     ####
                     
                     if vote['direction'] in [1, -1]:
-                        the_db['votes'][(creator_pub, vote['item_id'])] = vote['direction']
                         
-                        self.tdb.store('unblinded_votes',
-                                       received_via,
-                                       creator_pub + '|' + vote['item_id'],
+                        self.sdb.store('unblinded_votes',
+                                       creator_address + '|' + vote['item_id'],
                                        vote['direction'],
-                                       blind_credit_block_num,
+                                       cur_hash = msg['blockHash'], #blind_credit_block_hash,
+                                       nonce = payload_decoded['nonce'],
+                                       is_pending = is_pending,
+                                       #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                       #is_pending_timeout = False,
+                                       #is_pending_replaces_nonce = False,
                                        )
                         
                     elif vote['direction'] == 0:
-                        try: del the_db['votes'][(creator_pub, vote['item_id'])]
-                        except: pass
 
-                        self.tdb.store('unblinded_votes',
-                                       received_via,
-                                       creator_pub + '|' + vote['item_id'],
+                        self.sdb.store('unblinded_votes',
+                                       creator_address + '|' + vote['item_id'],
                                        vote['direction'],
-                                       blind_credit_block_num,
-                                       )
-                        self.tdb.store('unblinded_votes',
-                                       received_via,
-                                       pub_to_address(creator_pub) + '|' + vote['item_id'],
-                                       vote['direction'],
-                                       blind_credit_block_num,
+                                       cur_hash = msg['blockHash'], #blind_credit_block_hash,
+                                       nonce = payload_decoded['nonce'],
+                                       is_pending = is_pending,
+                                       #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                       #is_pending_timeout = False,
+                                       #is_pending_replaces_nonce = False,
                                        )
 
 
                     elif vote['direction'] == 2:
-                        the_db['flags'][(creator_pub, vote['item_id'])] = vote['direction']
                                                 
-                        self.tdb.store('unblinded_flags',
-                                       received_via,
-                                       creator_pub + '|' + vote['item_id'],
+                        self.sdb.store('unblinded_flags',
+                                       creator_address + '|' + vote['item_id'],
                                        vote['direction'],
-                                       blind_credit_block_num,
-                                       )
-                        self.tdb.store('unblinded_flags',
-                                       received_via,
-                                       pub_to_address(creator_pub) + '|' + vote['item_id'],
-                                       vote['direction'],
-                                       blind_credit_block_num,
+                                       cur_hash = msg['blockHash'], #blind_credit_block_hash,
+                                       nonce = payload_decoded['nonce'],
+                                       is_pending = is_pending,
+                                       #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                       #is_pending_timeout = False,
+                                       #is_pending_replaces_nonce = False,
                                        )
                         
                     elif vote['direction'] == -2:
-                        try: del the_db['flags'][(creator_pub, vote['item_id'])]
-                        except: pass
                         
-                        self.tdb.store('unblinded_flags',
-                                       received_via,
-                                       creator_pub + '|' + vote['item_id'],
+                        self.sdb.store('unblinded_flags',
+                                       creator_address + '|' + vote['item_id'],
                                        vote['direction'],
-                                       blind_credit_block_num,
-                                       )
-                        self.tdb.store('unblinded_flags',
-                                       received_via,
-                                       pub_to_address(creator_pub) + '|' + vote['item_id'],
-                                       vote['direction'],
-                                       blind_credit_block_num,
+                                       cur_hash = msg['blockHash'], #blind_credit_block_hash,
+                                       nonce = payload_decoded['nonce'],
+                                       is_pending = is_pending,
+                                       #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                       #is_pending_timeout = False,
+                                       #is_pending_replaces_nonce = False,
                                        )
                         
                     elif vote['direction'] == 3:
-                        self.tdb.store('unblinded_approvals',
-                                       received_via,
-                                       creator_pub + '|' + vote['item_id'],
+                        self.sdb.store('unblinded_approvals',
+                                       creator_address + '|' + vote['item_id'],
                                        vote['direction'],
-                                       blind_credit_block_num,
-                                       )
-                        self.tdb.store('unblinded_approvals',
-                                       received_via,
-                                       pub_to_address(creator_pub) + '|' + vote['item_id'],
-                                       vote['direction'],
-                                       blind_credit_block_num,
+                                       cur_hash = msg['blockHash'], #blind_credit_block_hash,
+                                       nonce = payload_decoded['nonce'],
+                                       is_pending = is_pending,
+                                       #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                       #is_pending_timeout = False,
+                                       #is_pending_replaces_nonce = False,
                                        )
                         
                     elif vote['direction'] == -3:                        
-                        self.tdb.store('unblinded_approvals',
-                                       received_via,
-                                       creator_pub + '|' + vote['item_id'],
+                        self.sdb.store('unblinded_approvals',
+                                       creator_address + '|' + vote['item_id'],
                                        vote['direction'],
-                                       blind_credit_block_num,
-                                       )
-                        self.tdb.store('unblinded_approvals',
-                                       received_via,
-                                       pub_to_address(creator_pub) + '|' + vote['item_id'],
-                                       vote['direction'],
-                                       blind_credit_block_num,
+                                       cur_hash = msg['blockHash'], #blind_credit_block_hash,
+                                       nonce = payload_decoded['nonce'],
+                                       is_pending = is_pending,
+                                       #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                       #is_pending_timeout = False,
+                                       #is_pending_replaces_nonce = False,
                                        )
                         
                     else:
@@ -1065,23 +1024,16 @@ class CCCoinCore:
         
         ## Compute block rewards, for actions older than MAX_UNBLIND_DELAY, to allow time for unblinding:
         
-        if (received_via == 'BLOCKCHAIN_CONFIRMED'):
+        if not is_pending:
             
             ##
             #### START REWARDS CALCULATION:
             ##
             
-            #print 'RECEIVED_BLOCK', received_via
-            #raw_input()
+            block_number = msg['blockNumber']
             
-            block_number = ethereum.utils.parse_int_or_hex(msg['blockNumber'])
+            #assert doing_block_num <= block_number,('TOO SOON, fix MAX_UNBLIND_DELAY', doing_block_num, block_number)
             
-            ## REWARDS:
-                        
-            doing_block_num = block_number - (self.rw['MAX_UNBLIND_DELAY'] + 1)
-            
-            assert doing_block_num <= block_number,('TOO SOON, fix MAX_UNBLIND_DELAY', doing_block_num, block_number)
-
             #print 'GREATER?', (msg['blockNumber'], self.latest_block_number, doing_block_num)
             #raw_input()
             
@@ -1105,20 +1057,21 @@ class CCCoinCore:
                 total_lock = 0
                 item_ids = set()
                 
-                for voter_id_item_id, direction in self.tdb.iterate_block_items('unblinded_votes',
-                                                                                'BLOCKCHAIN_CONFIRMED',
-                                                                                start_block = doing_block_num,
-                                                                                end_block = doing_block_num,
-                                                                                ):
+                for voter_id_item_id, direction in self.sdb.iterate_items('unblinded_votes',
+                                                                          at_hash = msg['blockHash'],
+                                                                          block_offset = -self.rw['MAX_UNBLIND_DELAY'],
+                                                                          allow_pending = False,
+                                                                          ):
                     voter_id, item_id = voter_id_item_id.split('|')
                     
                     if voter_id not in voter_counts:
-                        voter_lock = self.tdb.lookup('min_lock_per_user',
-                                                     received_via,
+                        voter_lock = self.sdb.lookup('min_lock_per_user',
                                                      voter_id,
-                                                     end_block = doing_block_num - 1, ## Minus 1 for safety.
-                                                     default = 1.0 #(voter_id in self.genesis_users and 1.0 or 0.0),
-                                                     )[0]
+                                                     default = 1.0, #(voter_id in self.genesis_users and 1.0 or 0.0),
+                                                     block_offset = -self.rw['MAX_UNBLIND_DELAY'], 
+                                                     at_hash = msg['blockHash'],
+                                                     allow_pending = True,
+                                                     )#[0]
                         voter_lock_cache[voter_id] = voter_lock
                         total_lock += voter_lock
                     
@@ -1127,7 +1080,7 @@ class CCCoinCore:
                     voter_counts[voter_id].add(item_id)
                     
                     item_ids.add(item_id)
-
+                
                 print 'voter_counts:', voter_counts
                 print 'voter_lock_cache:', voter_lock_cache
                 print 'total_lock:', total_lock
@@ -1137,11 +1090,11 @@ class CCCoinCore:
                 total_lock_per_item = Counter()
                 lock_per_user = {}
                 
-                for (voter_id, item_id), direction in self.tdb.iterate_block_items('unblinded_votes',
-                                                                                   'BLOCKCHAIN_CONFIRMED',
-                                                                                   start_block = doing_block_num,
-                                                                                   end_block = doing_block_num,
-                                                                                   ):
+                for (voter_id, item_id), direction in self.sdb.iterate_items('unblinded_votes',
+                                                                             at_hash = msg['blockHash'],
+                                                                             block_offset = -self.rw['MAX_UNBLIND_DELAY'],
+                                                                             allow_pending = False,
+                                                                             ):
                     ## Spread among all posts he voted on:
                     voter_lock = voter_lock_cache[voter_id] / float(len(voter_counts[voter_id]))
                     lock_per_user[voter_id] = voter_lock
@@ -1149,33 +1102,29 @@ class CCCoinCore:
                     
                 
                 ## Get list of all old voters, for each post:
-
+                
                 old_voters = {}
                 
                 for item_id in item_ids:
                     old_voters[item_id] = []
                     
-                    try:
-                        old_voters[item_id] = self.tdb.lookup('post_voters_1',  ## Upvoters only, for v1.
-                                                              'BLOCKCHAIN_CONFIRMED',
-                                                              item_id,
-                                                              start_block = doing_block_num - 1,
-                                                              end_block = doing_block_num - 1,
-                                                              #as_set_op = True,
-                                                              default = {}
-                                                              )[0].keys()
-                    except KeyError:
-                        pass
+                    old_voters[item_id] = self.sdb.lookup('post_voters_1',  ## Upvoters only, for v1.
+                                                          item_id,
+                                                          default = {},
+                                                          block_offset = -self.rw['MAX_UNBLIND_DELAY'], 
+                                                          at_hash = msg['blockHash'],
+                                                          allow_pending = True,
+                                                          ).keys()#[0].keys()
                     
                     ## Treat poster as just another voter:
 
                     post = False
-                    post = self.tdb.lookup('posts',
-                                           received_via,
+                    post = self.sdb.lookup('posts',
                                            item_id,
-                                           end_block = doing_block_num,
                                            default = False,
-                                           )[0]
+                                           at_hash = msg['blockHash'],
+                                           allow_pending = True,
+                                           )#[0]
                     if post is False:
                         ## TODO -
                         ## We got a vote for a post that's not yet fully confirmed...
@@ -1207,10 +1156,11 @@ class CCCoinCore:
 
                         ## Sponsor rewards for curation:
 
-                        post = self.tdb.lookup('posts',
-                                               received_via,
+                        post = self.sdb.lookup('posts',
                                                item_id,
-                                               end_block = doing_block_num)[0]
+                                               at_hash = msg['blockHash'],
+                                               allow_pending = True,
+                                               )#[0]
                         if 'sponsor' in post:
                             new_rewards_curator[post['sponsor']] += xrw
 
@@ -1235,21 +1185,27 @@ class CCCoinCore:
 
                     for user_id, reward in (new_rewards_curator + new_rewards_sponsor):
 
-                        with self.tdb.the_lock:
-                            self.tdb.store('earned_rewards_lock',
-                                           'DIRECT',
+                        with self.sdb.the_lock:
+                            self.sdb.store('earned_rewards_lock',
                                            user_id,
-                                           reward + self.tdb.lookup('earned_rewards_lock',
-                                                                    'DIRECT',
+                                           reward + self.sdb.lookup('earned_rewards_lock',
                                                                     user_id,
-                                                                    end_block = doing_block_num,
                                                                     default = 0,
-                                                                    )[0],
-                                           doing_block_num,
+                                                                    cur_hash = msg['blockHash'],
+                                                                    is_pending = True,
+                                                                    #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                                                    #is_pending_timeout = False,
+                                                                    #is_pending_replaces_nonce = False,
+                                                                    ),#[0],
+                                           cur_hash = msg['blockHash'],
+                                           is_pending = True,
+                                           #is_pending_dependent_on_hash = payload_decoded['cur_hash'],
+                                           #is_pending_timeout = False,
+                                           #is_pending_replaces_nonce = False,
                                            )
 
                 
-                assert received_via == 'BLOCKCHAIN_CONFIRMED', confirm_level
+                assert not is_pending
 
                 ##
                 #### Occasionally distribute rewards:
@@ -1263,18 +1219,19 @@ class CCCoinCore:
                     
                     net_earned = 0.0
                     
-                    for user_id, earned_lock in self.tdb.iterate_block_items('earned_rewards_lock',
-                                                                             'BLOCKCHAIN_CONFIRMED',
-                                                                             start_block = old_rewards_block_num,
-                                                                             end_block = old_rewards_block_num,
-                                                                             ):
+                    for user_id, earned_lock in self.sdb.iterate_items('earned_rewards_lock',
+                                                                       at_hash = msg['blockHash'],
+                                                                       block_offset = -self.rw['MAX_UNBLIND_DELAY'],
+                                                                       allow_pending = False,
+                                                                       ):
                         
-                        paid_lock = self.tdb.lookup('paid_rewards_lock',
-                                                    'BLOCKCHAIN_CONFIRMED',
+                        paid_lock = self.sdb.lookup('paid_rewards_lock',
                                                     user_id,
-                                                    end_block = old_rewards_block_num,
                                                     default = 0.0,
-                                                    )[0]
+                                                    at_hash = msg['blockHash'],
+                                                    block_offset = -self.rw['MAX_UNBLIND_DELAY'],
+                                                    allow_pending = False,
+                                                    )#[0]
                         
                         net_earned += float(max(0.0, earned_lock - paid_lock))
                     
@@ -1299,7 +1256,7 @@ class CCCoinCore:
                         reward_tok = 0.9 * reward_lock
                         tot_tok_paying_now = 0.9 * tot_lock_paying_now
                         
-                        tx = self.cw.send_transaction('mintTokens(address, uint, uint, uint, uint, uint, uint)',
+                        tx = self.sdb.send_transaction('mintTokens(address, uint, uint, uint, uint, uint, uint)',
                                                       [reward_tok,
                                                        reward_lock,
                                                        user_id,
@@ -1313,24 +1270,7 @@ class CCCoinCore:
                     
                     
                 ## Cleanup:
-
-                if False:
-                    self.tdb.prune_historical('unblinded_votes',
-                                              T_ANY_FORK,
-                                              doing_block_num - 2,
-                                              )
-                    self.tdb.prune_historical('unblinded_flags',
-                                              T_ANY_FORK,
-                                              doing_block_num - 2)
-                    self.tdb.prune_historical('min_lock_per_user',
-                                              T_ANY_FORK,
-                                              doing_block_num - 2)
-                    self.tdb.prune_historical('lock_per_item',
-                                              T_ANY_FORK,
-                                              doing_block_num - 2)
-                    self.tdb.prune_historical('posts',
-                                              T_ANY_FORK,
-                                              doing_block_num - 2)
+                #self.sdb.prune_historical(max_blocks = 50)
                     
 
             ### END REWARDS
@@ -1343,10 +1283,10 @@ class CCCoinCore:
             if not self.offline_testing_mode:
                 self.prev_block_number = msg['blockNumber']
         
-        if False and (received_via == 'BLOCKCHAIN_CONFIRMED'):
+        if False and (not is_pending):
             print
             print '====STATE===='
-            print 'received_via:', received_via
+            print 'is_pending:', is_pending
             print 'block_number:', block_number
             print 'command:', payload_decoded['command']
             print 'payload_decoded:', payload_decoded
@@ -1386,7 +1326,7 @@ class CCCoinCore:
 
         assert not self.offline_testing_mode
         
-        self.cw.deploy()
+        self.sdb.deploy()
     
         
     def submit_blind_action(self,
@@ -1421,7 +1361,7 @@ class CCCoinCore:
         #json.loads(blind_data['payload'])
         
         self.process_event(blind_data,
-                           received_via = 'DIRECT',
+                           is_pending = True,
                            do_verify = False,
                            )
         
@@ -1429,11 +1369,11 @@ class CCCoinCore:
             
             dd = dumps_compact(blind_data)
             
-            tx = self.cw.send_transaction('addLog(bytes)',
-                                          [dd],
-                                          #send_from = user_id,
-                                          gas_limit = self.rw['MAX_GAS_DEFAULT'],
-                                          callback = False,
+            tx = self.sdb.send_transaction('addLog(bytes)',
+                                           [dd],
+                                           #send_from = user_id,
+                                           gas_limit = self.rw['MAX_GAS_DEFAULT'],
+                                           callback = False,
                                           )
         
         print ('DONE_SUBMIT_BLIND_ACTION')
@@ -1478,7 +1418,7 @@ class CCCoinCore:
         #item_ids = self.cache_unblind(msg_data['pub'], payload_decoded, 'DIRECT')
         
         item_ids = self.process_event(msg_data,
-                                      received_via = 'DIRECT',
+                                      is_pending = True,
                                       do_verify = False,
                                      )['item_ids']
         
@@ -1489,10 +1429,10 @@ class CCCoinCore:
             
             rr = dumps_compact(msg_data)
         
-            tx = self.cw.send_transaction('addLog(bytes)',
-                                          [rr],
-                                          #send_from = user_id,
-                                          gas_limit = self.rw['MAX_GAS_DEFAULT'],
+            tx = self.sdb.send_transaction('addLog(bytes)',
+                                           [rr],
+                                           #send_from = user_id,
+                                           gas_limit = self.rw['MAX_GAS_DEFAULT'],
                                           )
             #tracking_id = tx
             
@@ -1507,36 +1447,38 @@ class CCCoinCore:
         return rr
         
     def lockup_tok(self):
-        tx = self.cw.send_transaction('lockupTok(bytes)',
-                                      [rr],
-                                      gas_limit = self.rw['MAX_GAS_DEFAULT'],
-                                      )
-
+        tx = self.sdb.send_transaction('lockupTok(bytes)',
+                                       [rr],
+                                       gas_limit = self.rw['MAX_GAS_DEFAULT'],
+                                       )
+    
     def get_balances(self,
                      user_id,
                      ):
-        xx = self.cw.read_transaction('balanceOf(address)',
-                                      [rr],
-                                      gas_limit = self.rw['MAX_GAS_DEFAULT'],
-                                      )
+        xx = self.sdb.read_transaction('balanceOf(address)',
+                                       [rr],
+                                       gas_limit = self.rw['MAX_GAS_DEFAULT'],
+                                       )
         rr = loads_compact(xx['data'])
         return rr
 
     def withdraw_lock(self,):
-        tx = self.cw.send_transaction('withdrawTok(bytes)',
-                                      [rr],
-                                      gas_limit = self.rw['MAX_GAS_DEFAULT'],
-                                      )
+        tx = self.sdb.send_transaction('withdrawTok(bytes)',
+                                       [rr],
+                                       gas_limit = self.rw['MAX_GAS_DEFAULT'],
+                                       )
 
     def get_vote_history(self,
                          post_id,
                          ):
+        ## TODO
+        return []
         rr = {}
         for table_name in ['post_voters_1',
                            'post_voters_-1',
                            ]:
             for fork_name in self.cw.confirm_states:
-                for block_num, user_id_is_up in self.tdb.tables[table_name].forks[fork_name].hh.get(post_id,{}).items():
+                for block_num, user_id_is_up in self.sdb.tables[table_name].forks[fork_name].hh.get(post_id,{}).items():
                     if block_num not in rr:
                         rr[block_num] = {}
                     for aa,bb in [(x,y and table_name or ('rem_' + table_name)) for x,y in user_id_is_up.items()]:
@@ -1579,30 +1521,30 @@ class CCCoinCore:
         if filter_users:
             rr = []
             #for post in self.posts_by_post_id.itervalues():
-            for post_id, post in self.tdb.iterate_block_items('posts',
-                                                              T_ANY_FORK,
-                                                              ):
+            for post_id, post in self.sdb.iterate_items('posts',
+                                                        at_hash = 'latest',
+                                                        ):
                 if (post['status']['creator_address'] in filter_users) or (post['status']['creator_address'][:20] in filter_users):
                     rr.append(post)
-                    
+                
         elif filter_ids:
             rr = []
             for xx in filter_ids:
                 #rr = self.posts_by_post_id.get(xx, False)
-                post = self.tdb.lookup('posts',
-                                       T_ANY_FORK,
+                post = self.sdb.lookup('posts',
                                        xx,
+                                       at_hash = 'latest',
                                        default = False
-                                       )[0]
+                                       )#[0]
                 if post:
                     rr.append(post)
         
         else:
             #rr = self.posts_by_post_id.values()
             rr = []
-            for post_id, post in self.tdb.iterate_block_items('posts',
-                                                              T_ANY_FORK,
-                                                              ):
+            for post_id, post in self.sdb.iterate_items('posts',
+                                                        at_hash = 'latest',
+                                                        ):
                 rr.append(post)
         
         ## Use highest score from any consensus state:
@@ -1616,11 +1558,11 @@ class CCCoinCore:
             #                                              default = set(),
             #                                              as_set_op = True,
             #                                              )[0])
-            post['status']['score']  = self.tdb.lookup('scores',
-                                                      T_ANY_FORK,
-                                                      post['status']['creator_pub'] + '|' + post['post_id'],
-                                                      default = 0,
-                                                      )[0]
+            post['status']['score']  = self.sdb.lookup('scores',
+                                                       post['post_id'],
+                                                       at_hash = 'latest',
+                                                       default = 0,
+                                                      )#[0]
             print ('SCORE', post['status']['score'])
         
         ## Sort:
@@ -1628,22 +1570,6 @@ class CCCoinCore:
         rr = list(sorted([(x['status'][sort_by],x) for x in rr], reverse=True))
         rr = rr[offset:offset + increment]
         rr = [y for x,y in rr]
-        
-        ## Flag filter:
-
-        if False:
-            ## Moved to index.html
-            if web_node_flag_accounts:
-                rr2 = []
-                for the_item in rr:
-                    for xacc in web_node_flag_accounts:
-                        if not self.tdb.lookup('unblinded_flags',
-                                               T_ANY_FORK,
-                                               xacc + '|' + the_item['post_id'],
-                                               default = False,
-                                               )[0] == 2:                    
-                            rr2.append(the_item)
-                rr = rr2        
         
         ## Done:
         
@@ -1661,7 +1587,7 @@ class CCCoinCore:
         Note: Leaderboard only updated when rewards are re-computed.
         """
         
-        the_db = self.DBL['all_dbs']['BLOCKCHAIN_CONFIRMED']
+        #the_db = self.DBL['all_dbs']['BLOCKCHAIN_CONFIRMED']
         
         rr = [(x['score'], x) for x in self.all_users.values()]
         rr = [y for x,y in rr]

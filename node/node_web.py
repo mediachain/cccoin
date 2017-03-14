@@ -475,7 +475,7 @@ class BaseHandler(tornado.web.RequestHandler):
         kwargs['htime_ago'] = htime_ago
         kwargs['urlencode'] = urlencode
         kwargs['T_ANY_FORK'] = T_ANY_FORK
-
+        
         #print 'START_STORE'
         #self.cccoin.tdb.store('user_id_to_username','DIRECT','test','test2')
         #print 'END_STORE'
@@ -589,13 +589,13 @@ class handle_login_1(BaseHandler):
 
         hh = json.loads(self.request.body)
 
-        the_pub = hh['the_pub']
+        the_address = pub_to_address(hh['the_pub'])
         
-        challenge = self.cccoin.DBL['CHALLENGES_DB'].get(the_pub, False)
+        challenge = self.cccoin.DBL['CHALLENGES_DB'].get(the_address, False)
         
         if challenge is False:
             challenge = binascii.hexlify(urandom(16))
-            self.cccoin.DBL['CHALLENGES_DB'][the_pub] = challenge
+            self.cccoin.DBL['CHALLENGES_DB'][the_address] = challenge
 
         self.write_json({'challenge':challenge})
 
@@ -623,10 +623,11 @@ class handle_login_2(BaseHandler):
 	 sig_s: sig.s.toString('hex')
 	}
         """
-        
+
         the_pub = hh['the_pub']
+        the_address = pub_to_address(the_pub)
         
-        challenge = self.cccoin.DBL['CHALLENGES_DB'].get(the_pub, False)
+        challenge = self.cccoin.DBL['CHALLENGES_DB'].get(the_address, False)
         
         if challenge is False:
             print ('LOGIN_2: ERROR UNKNOWN CHALLENGE', challenge)
@@ -657,19 +658,19 @@ class handle_login_2(BaseHandler):
         if hh['requested_username'] and (hh['requested_username'] in self.cccoin.DBL['TAKEN_USERNAMES_DB']):
             username_success = False
         
-        if hh['requested_username'] and self.cccoin.tdb.lookup('username_to_user_id',
-                                                               T_ANY_FORK,
+        if hh['requested_username'] and self.cccoin.sdb.lookup('username_to_user_id',
                                                                hh['requested_username'],
-                                                               default=False,
+                                                               default = False,
+                                                               at_hash = 'latest'
                                                                ):
             username_success = False
-
+        
         ## Check if user already registered a username before:
-
+        
         uu = self.cccoin.tdb.lookup('user_id_to_username',
-                                    T_ANY_FORK,
-                                    the_pub,
+                                    the_address,
                                     default = False,
+                                    at_hash = 'latest'
                                     )
         
         if uu:
@@ -678,19 +679,12 @@ class handle_login_2(BaseHandler):
         else:
             got_username = hh['requested_username']
         
-        self.cccoin.tdb.store('user_id_to_username',
-                              'DIRECT',
-                              the_pub,
+        self.cccoin.sdb.store('user_id_to_username',
+                              the_address,
                               hh['requested_username'],
-                              start_block = self.cccoin.cw.c.eth_blockNumber(),
+                              is_pending = True,
                               )
-
-        xx = self.cccoin.tdb.lookup('user_id_to_username',
-                                    T_ANY_FORK,
-                                    the_pub,
-                                    )
-        assert xx[0] == hh['requested_username'], xx
-        
+                
         ## Check if previously unseen user ID:
         
         is_new = self.cccoin.DBL['SEEN_USERS_DB'].get(the_pub, False)

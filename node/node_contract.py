@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+## !!! REPLACED BY node_blockchain.py & node_state.py
+
 import web3
 import ethereum.utils ## Slow...
 

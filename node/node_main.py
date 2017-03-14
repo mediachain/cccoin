@@ -83,6 +83,8 @@ from node_temporal import test_temporal_table
 from node_contract import ContractWrapper, test_contract_wrapper
 from node_generic import setup_main
 from node_web import inner_start_web
+from node_blockchain import EthereumBlockchain
+from node_state import StateManager
 
 ##
 #### Other Imports:
@@ -495,6 +497,7 @@ def test_1(via_cli = False):
         for xlog in cw.c.eth_getFilterLogs(filter):
             print json.dumps(xlog, indent=4)
 
+
 def start_inner(mode,
                 via_cli = False,
                 ):
@@ -506,29 +509,28 @@ def start_inner(mode,
 
     if the_address:
         print ('USING_ALREADY_DEPLOYED', the_address)
-
+    
     else:
         #the_address = deploy_contract()
         #print ('USING_NEWLY_DEPLOYED', the_address)
         assert False, 'First must run `python node_main.py deploy_contract`, or put contract address in `'+ CONTRACT_ADDRESS_FN + '`.'
     
     assert the_address
-        
-    cw = ContractWrapper(the_address = the_address,
-                         settings_confirm_states = DEFAULT_CONFIRM_STATES,
-                         )
 
-    ## Must be created pre-forking, for the shared in-memory DBs:
-    cccoin = CCCoinCore(contract_wrapper = cw,
+    bcc = EthereumBlockchain(the_address = the_address)
+    bcc.start_background_thread(start_in_foreground = (mode != 'web'),
+                                terminate_on_exception = (mode != 'web'),
+                                )
+    
+    sdb = StateManager(bcc)
+        
+    ## Must be created prior to forking, for the shared in-memory DBs:    
+    cccoin = CCCoinCore(state_manager = sdb,
                         settings_rewards = CORE_SETTINGS,
                         mode = mode,
-                        mediachain_api_url=MC_API_URL,
+                        mediachain_api_url = MC_API_URL,
                         )
 
-    cw.start_contract_thread(start_in_foreground = (mode != 'web'),
-                             terminate_on_exception = (mode != 'web'),
-                             )
-    
     if mode == 'web':
         inner_start_web(cccoin,
                         image_proxy_path = IMAGE_PROXY_PATH,
