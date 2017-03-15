@@ -21,6 +21,34 @@ from Queue import Queue
 from time import sleep, time
 import json
 
+import struct
+import binascii
+
+def dumps_compact(h):
+    #print ('dumps_compact',h)
+    return json.dumps(h, separators=(',', ':'), sort_keys=True)
+
+def loads_compact(d):
+    #print ('loads_compact',d)
+    r = json.loads(d)#, separators=(',', ':'))
+    return r
+
+def solidity_string_decode(ss):
+    if ss.startswith('{'):
+        ## TODO: some versions of testrpc returning decoded `data`, some not?
+        return ss
+    ss = binascii.unhexlify(ss[2:])
+    ln = struct.unpack(">I", ss[32:][:32][-4:])[0]
+    return ss[32:][32:][:ln]
+
+def solidity_string_encode(ss):
+    rr = ('\x00' * 31) + ' ' + ('\x00' * 28) + struct.pack(">I", len(ss)) + ss    
+    rem = 32 - (len(rr) % 32)
+    if rem != 0:
+        rr += ('\x00' * (rem))
+    rr = '0x' + binascii.hexlify(rr)
+    return rr
+
 
 class EthereumBlockchain:
     def __init__(self,
@@ -49,10 +77,26 @@ class EthereumBlockchain:
         
         self.send_transaction_queue = Queue()
         
+        self.background_thread_sleep_time = background_thread_sleep_time
+
+        self.pending_transactions = {}  ## {tx:callback}
+        
         self.is_deployed = False
         
-        self.background_thread_sleep_time = background_thread_sleep_time
+        if the_address:
+            assert self.check_anything_deployed(the_address), ('NOTHING DEPLOYED AT SPECIFIED ADDRESS:', the_address)
+            self.is_deployed = True
+        elif the_code:
+            if auto_deploy:
+                self.deploy()
+
         
+    #def setup_create_pending_transaction(func):
+    #    self._create_pending_transaction = func
+    
+    #def setup_logic_callback(func):
+    #    self._logic_callback = func
+    
     def event_sig_to_topic_id(self, sig):
         """ Compute ethereum topic_ids from function signatures. """
         if sig in self.sig_to_topic_id_cache:
@@ -62,50 +106,55 @@ class EthereumBlockchain:
         topic_id = ethereum.utils.int_to_hex(ethereum.abi.event_id(name,types))
         self.sig_to_topic_id_cache[sig] = topic_id
         return topic_id
+
+    def setup_event_callbacks(self,
+                              log_handlers,
+                              pending_handlers,
+                              ):
+        self.log_handlers = log_handlers
+        self.log_handlers_hashed = {((x == 'DEFAULT') and 'DEFAULT' or self.event_sig_to_topic_id(x)):y
+                                    for x,y
+                                    in log_handlers.items()}
+        self.pending_handlers = pending_handlers
     
-    def _estimate_event_log_outputs(self,
-                                    args_sig,
-                                    args,
-                                    *_1, **_2):
+    def logic_callback(self, msg, *args, **kw):
+        default_func = self.log_handlers_hashed.get('DEFAULT', False)
+        
+        if 'topics' not in msg:
+            assert default_func is not False, ('Unknown topic_id and no DEFAULT handler.')
+            print ('PROXY logic_callback()', '->', default_func, kw)
+            default_func(msg, *args, **kw)
+            return
+        
+        for topic in msg['topics']:
+            func = self.log_handlers_hashed.get(topic, default_func)
+            print ('PROXY logic_callback()', topic, '->', func)
+            assert func is not False, ('Unknown topic_id and no DEFAULT handler.', topic, kw)
+            func(msg, *args, **kw)
+    
+    def simulate_pending(self,
+                         args_sig,
+                         args,
+                         *aa, **bb):
+        """ 
+        See: https://github.com/ethereum/wiki/wiki/Ethereum-Contract-ABI#events 
         """
-        Called by send_transaction().
+        ## TODO: support indexed topics?
         
-        Instantly estimate what event log(s) will be output from a contract call transaction, so that the app can instantly compute derived
-        state for pending transactions, which will later be confirmed when the corresponding events are read in from confirmed blocks on the blockchain.
+        func = self.pending_handlers.get(args_sig, self.pending_handlers.get('DEFAULT', False))
         
-        In theory, this could involve replicating the full EVM logic here.  Typically though, we'll just implement those contract
-        calls that have trivial logic & don't depend on blockchain state, e.g. `addLog(bytes)`, and ignore the rest.
-        """
+        print ('Proxy: simulate_pending()', args_sig, '->', func)
         
-        pending_logs = []
-        
-        topic_id = self.event_sig_to_topic_id(args_sig)
-        
-        if args_sig == 'TheLog(bytes)':
-            
-            assert len(args) == 1
-            
-            log = {"type": "mined", 
-                   "data": args[0], ## TODO: need to solidity-encode this string, or not?
-                   "topics": [topic_id], 
-                   #"blockHash": "0xebe2f5a6c9959f83afc97a54d115b64b3f8ce62bbccb83f22c030a47edf0c301", 
-                   #"transactionHash": "0x3a6d530e14e683e767d12956cb54c62f7e8aff189a6106c3222b294310cd1270", 
-                   #"blockNumber": "0x68", 
-                   #"address": "0x88f93641a96cb032fd90120520b883a657a6f229", 
-                   #"logIndex": "0x00", 
-                   #"transactionIndex": "0x00"
-                   }
-            
-            pending_logs.append(log)
-        
-        return pending_logs
-        
+        return func(args_sig, args, *aa, **bb)
+
     def get_block_by_hash_callback(self, block_hash):
         """
         Get block by blockHash.
         
         https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_getblockbyhash
         """
+        print ('bcc.get_block_by_hash_callback()', block_hash)
+
         rh = self.con.eth_getBlockByHash(block_hash)
         
         for k in ['number', 'timestamp']:
@@ -121,25 +170,34 @@ class EthereumBlockchain:
         
         https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_getlogs
         """
+        print ('bcc.get_logs_by_block_num_callback()', block_num)
         
         the_filter = self.con.eth_newFilter(from_block =  fixed_int_to_hex(block_num),
                                             to_block = fixed_int_to_hex(block_num),
                                             address = self.contract_address,
                                             )
         
-        rr =  self.con.eth_getLogs(str(the_filter))
-        
+        rr =  self.con.eth_getFilterLogs(str(the_filter))
+
+        rr2 = []
         for msg in rr:
+            #assert 'topics' in msg, list(sorted(msg.keys()))
+            got_num = ethereum.utils.parse_int_or_hex(msg['blockNumber'])
+            if got_num != block_num:
+                continue
             msg['data'] = solidity_string_decode(msg['data'])
-            msg['blockNumber'] = ethereum.utils.parse_int_or_hex(msg['blockNumber'])
+            msg['blockNumber'] = got_num
             msg["logIndex"] = ethereum.utils.parse_int_or_hex(msg['logIndex'])
             msg["transactionIndex"] = ethereum.utils.parse_int_or_hex(msg['transactionIndex'])
-            msg_data = loads_compact(msg['data'])
-            payload_decoded = loads_compact(msg_data['payload'])
-            
+            #msg_data = loads_compact(msg['data'])
+            #payload_decoded = loads_compact(msg_data['payload'])
+            rr2.append(msg)
+        rr = rr2
+        
         return rr
 
     def get_latest_block_number(self):
+        print ('bcc.get_latest_block_number()')
         bn = self.con.eth_blockNumber()
         return bn
     
@@ -147,6 +205,7 @@ class EthereumBlockchain:
         """
         Returns the single latest block. Missing intermediate blocks will be automatically looked up by caller.
         """
+        print ('bcc.get_latest_block_callback()')
         bn = self.get_latest_block_number()
         block = self.con.eth_getBlockByNumber(bn)
         return block
@@ -154,7 +213,8 @@ class EthereumBlockchain:
                 
     def check_anything_deployed(self, address):
         """ Basic sanity check, checks if ANY code is deployed at provided address. """
-        if self.c.eth_getCode(address) == '0x0':
+        print ('bcc.check_anything_deployed()', address)
+        if self.con.eth_getCode(address) == '0x0':
             return False
         return True
             
@@ -166,6 +226,7 @@ class EthereumBlockchain:
                callback = False,
                ):
         """ Deploy contract. Optional args_sig and args used to pass arguments to contract constructor."""
+        print ('bcc.deploy()')
 
         if the_sig is not False:
             self.contract_sig = the_sig
@@ -176,7 +237,7 @@ class EthereumBlockchain:
         assert self.the_code
 
         if deploy_from is False:
-            deploy_from = self.c.eth_coinbase()
+            deploy_from = self.con.eth_coinbase()
         
         print ('DEPLOYING_CONTRACT...', 'deploy_from:', deploy_from, 'the_sig:', the_sig, 'the_args:', the_args)        
         # get contract address
@@ -217,24 +278,67 @@ class EthereumBlockchain:
                 sleep(self.blocking_sleep_time)
             print ('GOT RECEIPT')
         else:
-            self.pending_transactions[contract_tx] = (callback, self.latest_block_num)
+            self.pending_transactions[contract_tx] = callback
         
         self.contract_address = str(self.con.get_contract_address(contract_tx))
         self.is_deployed = True
         print ('DEPLOYED', self.contract_address)
         return self.contract_address
 
-    
-    def do_send_transaction(self,
-                         args_sig,
-                         args,
-                         callback = False,
-                         send_from = False,
-                         block = False,
-                         gas_limit = False,
-                         gas_price = 100,
-                         value = 100000000000,
-                         ):
+    def send_transaction(self, *args, **kw):
+        """
+        1) If possible create simulated outputs of transactions, to use as pending state.
+        2) Queue the transaction for blockchain commit.
+        
+        Used for e.g.:
+        - addLog(bytes)
+        - mintTokens(address, uint, uint, uint, uint, uint, uint)
+        - withdrawTok(bytes)
+        - lockupTok(bytes)
+        """
+        print ('bcc.send_transaction()')
+
+        assert len(args) <= 2
+        #assert self.loop_once_started, 'loop_once() not started?'
+
+        ## Potentially slow blocking call to commit it to the blockchain:
+
+        if kw.get('block'):
+            ## Send transaction in blocking mode, and grab actual event logs that are committed:
+
+            rh = self.inner_send_transaction(*args, **kw)
+            pending_logs = rh['pending_logs']
+            is_pending = False
+            
+        else:
+            ## Run callbacks, return simulated event logs where possible:
+
+            self.send_transaction_queue.put((0, args, kw))
+            pending_logs = self.simulate_pending(*args, **kw)
+            is_pending = True
+        
+        ## Run logic_callback() against pending transactions:
+        
+        for log in pending_logs:
+            print ('CALLING', 'is_pending:', is_pending, 'is_noop:', log.get('is_noop', False))
+                                
+            self.logic_callback(log,
+                                is_pending = is_pending,
+                                is_noop = log.get('is_noop', False)
+                                )
+
+        return pending_logs
+            
+    def inner_send_transaction(self,
+                               args_sig,
+                               args,
+                               callback = False,
+                               send_from = False,
+                               block = False,
+                               gas_limit = False,
+                               gas_price = 100,
+                               value = 100000000000,
+                               ):
         """
         1) Attempt to send transaction.
         2) Get first confirmation via transaction receipt.
@@ -242,6 +346,7 @@ class EthereumBlockchain:
         
         https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_sendtransaction
         """
+        print ('bcc.inner_send_transaction()')
 
         assert self.is_deployed, 'Must deploy contract first.'
 
@@ -258,7 +363,6 @@ class EthereumBlockchain:
         print ('args_sig', args_sig)
         print ('args', args)
         #print ('gas', gas_limit)
-
         
         gas_limit = 1000000
         gas_price = self.con.DEFAULT_GAS_PRICE
@@ -287,11 +391,11 @@ class EthereumBlockchain:
             #if receipt['blockNumber']:
             #    self.latest_block_num = max(ethereum.utils.parse_int_or_hex(receipt['blockNumber']), self.latest_block_num)
         else:
-            self.pending_transactions[tx] = (callback, self.latest_block_num)
-
-        self.latest_block_num = self.con.eth_blockNumber()
+            self.pending_transactions[tx] = callback
         
-        return {'tx':tx, 'pending_logs':pending_logs}
+        #self.latest_block_num = self.con.eth_blockNumber()
+        
+        return {'tx':tx}
 
     def poll_outgoing_receipts(self):
         """
@@ -305,7 +409,7 @@ class EthereumBlockchain:
         if self.pending_transactions:
             had_any_events = True
         
-        for tx, (callback, attempt_block_num) in self.pending_transactions.items():
+        for tx, callback in self.pending_transactions.items():
             
             receipt = self.con.eth_getTransactionReceipt(tx)
             
@@ -317,7 +421,7 @@ class EthereumBlockchain:
             
             ## Now compare against the block_number where it was actually included:
             
-            if (actual_block_number is not False) and (actual_block_number >= self.latest_block_num - self.confirm_states['BLOCKCHAIN_CONFIRMED']):
+            if actual_block_number is not False:
                 if callback is not False:
                     callback(receipt)
                 del self.pending_transactions[tx]
@@ -332,7 +436,7 @@ class EthereumBlockchain:
         
         while True:
             try:
-                had_any_events = self.loop_writes_once()
+                had_any_events = self.loop_once_blockchain()
             except Exception as e:
                 print ('-----LOOP_ONCE_EXCEPTION', e)
                 #exit(-1)
@@ -341,7 +445,7 @@ class EthereumBlockchain:
                 if terminate_on_exception:
                     raise
                 continue
-
+            
             if had_any_events:
                 last_event = time()
             else:
@@ -365,50 +469,9 @@ class EthereumBlockchain:
             self.t.daemon = True
             self.t.start()
     
-    def send_transaction(self, *args, **kw):
-        """
-        1) If possible create simulated outputs of transactions, to use as pending state.
-        2) Queue the transaction for blockchain commit.
-        
-        Used for e.g.:
-        - addLog(bytes)
-        - mintTokens(address, uint, uint, uint, uint, uint, uint)
-        - withdrawTok(bytes)
-        - lockupTok(bytes)
-        """
-        
-        assert len(args) <= 2
-        assert self.loop_once_started, 'loop_once() not started?'
-        
-        ## Potentially slow blocking call to commit it to the blockchain:
-
-        if kw.get('block'):
-            ## Send transaction in blocking mode, and grab actual event logs that are committed:
-            
-            rh = self.do_send_transaction(*args, **kw)
-            
-            pending_logs = rh['pending_logs']
-            
-        else:
-            ## Run callbacks, return simulated event logs where possible:
-            
-            self.send_transaction_queue.put((0, args, kw))
-            
-            pending_logs = self._estimate_event_log_outputs(*args, **kw)
-
-        
-        ## Run logic_callback() against pending transactions:
-            
-        for log in pending_logs:
-            self.logic_callback(log,
-                                is_pending = (kw.get('block') and True),
-                                is_noop = log.get('is_noop', False)
-                                )
-        
-        return pending_logs
             
 
-    def loop_writes_once(self):
+    def loop_once_blockchain(self):
         ## Check for available write receipts:
         #self.poll_outgoing_receipts()
 
@@ -420,7 +483,7 @@ class EthereumBlockchain:
             print ('TRY_TO_SEND')
             tries, args, kw = self.send_transaction_queue.get()
             try:
-                self._send_transaction(*args, **kw)
+                self.inner_send_transaction(*args, **kw)
             except Exception as e:
                 print ('FAILED_TO_SEND', e, tries, args, kw)
                 sleep(1) ## TODO

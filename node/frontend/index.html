@@ -276,9 +276,9 @@
 				  
 					{% for c, the_item in enumerate(the_items['items'] ) %}
 					
-					{% set is_nuked = max([handler.cccoin.sdb.lookup('unblinded_flags', xacc + '|' + the_item['post_id'], default = False, at_hash='latest')[0] == 2 for xacc in handler.application.web_node_flag_accounts ]) %}
+					{% set is_nuked = max([handler.cccoin.sdb.lookup('unblinded_flags', xacc + '|' + the_item['post_id'], default = False, at_hash='latest') == 2 for xacc in handler.application.web_node_flag_accounts ]) %}
 
-					{% set is_approved = (not handler.application.web_node_approval_accounts) or max([handler.cccoin.sdb.lookup('unblinded_flags', xacc + '|' + the_item['post_id'], default = False, at_hash='latest')[0] == 2 for xacc in handler.application.web_node_approval_accounts ]) %}
+					{% set is_approved = (not handler.application.web_node_approval_accounts) or max([handler.cccoin.sdb.lookup('unblinded_flags', xacc + '|' + the_item['post_id'], default = False, at_hash='latest') == 2 for xacc in handler.application.web_node_approval_accounts ]) %}
 					
 					{% if (not is_nuked) or (session and session['address'] in handler.application.web_node_flag_accounts) %}
 					{% set is_approved = True %}
@@ -302,7 +302,7 @@
 							<div class="card-content">
 								{% if session %}
 								{% comment set is_up = (all_dbs['DIRECT']['votes'].get((session['pub'], the_item['post_id'])) == 1) or (all_dbs['BLOCKCHAIN_CONFIRMED']['votes'].get((session['pub'], the_item['post_id'])) == 1) %}
-								{% set is_up = (handler.cccoin.sdb.lookup('unblinded_votes', session['address'] + '|' + the_item['post_id'], default = False, at_hash = 'latest')[0] == 1) %}
+								{% set is_up = (handler.cccoin.sdb.lookup('unblinded_votes', session['address'] + '|' + the_item['post_id'], default = False, at_hash = 'latest') == 1) %}
 								{% else %}
 								{% set is_up = False %}
 								{% end %}
@@ -323,7 +323,7 @@
 								   style="bottom:auto;top:-40px;"><i class="material-icons grey-text text-lighten-2">thumb_down</i></a><!-- keyboard_arrow_down -->
 								<div class="row" style="margin:0;">
 									<div class="card-creator-text">
-									  <a href="/?user={{ the_item['status']['creator_address'] }}" class="red-text text-accent-4">{{ handler.cccoin.sdb.lookup('user_id_to_username', the_item['status']['creator_address'], default = 'pending_'+the_item['status']['creator_address'], at_hash = 'latest') }}
+									  <a href="/?user={{ the_item['status']['creator_address'] }}" class="red-text text-accent-4">{{ handler.cccoin.sdb.lookup('user_id_to_username', the_item['status']['creator_address'], default = 'pending_'+the_item['status']['creator_address'][:10], at_hash = 'latest') }}
 									 
 									    {% comment list(handler.cccoin.sdb.iterate_items('user_id_to_username', at_hash = 'latest')) %}
 									  </a>
@@ -332,7 +332,7 @@
 									<div>
 			<span class="card-money-outer">
 			  <span id="vote_{{ the_item['post_id'] }}_pow">
-			    {{ '%.2f' % (handler.cccoin.sdb.lookup('scores', the_item['status']['creator_address'] + '|' + the_item['post_id'], default = 0, at_hash = 'latest')[0]) }}
+			    {{ '%.2f' % (max(0, handler.cccoin.sdb.lookup('scores', the_item['post_id'], default = 0, at_hash = 'latest'))) }}
 			  </span> CCC			  
 			  {{ is_nuked and '(nuked)' or '' }}
 			  {% comment the_item['status'] %}
@@ -687,7 +687,10 @@
     <div class="row valign-wrapper">
       <div class="col s12 center-align">
 	{% if session %}
-	Your CCC: {{ '%.2f' % (handler.cccoin.sdb.lookup('scores_per_user', session['address'],default = 0)) }}<br>
+	{% comment list(handler.cccoin.sdb.iterate_items('posts', at_hash='latest')) %} <br>
+	{% comment handler.cccoin.sdb.hh['posts'] %} <br>
+	{% comment handler.cccoin.sdb.iterate_items('unblinded_votes') %} <br>
+	Your CCC: {{ '%.2f' % handler.cccoin.sdb.lookup('earned_rewards_per_user', session['address'], default=0) }}<br>
 	Your Address: {{ session['address'] }}
 	{% end %}
       </div>

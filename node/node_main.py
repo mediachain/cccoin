@@ -516,21 +516,22 @@ def start_inner(mode,
         assert False, 'First must run `python node_main.py deploy_contract`, or put contract address in `'+ CONTRACT_ADDRESS_FN + '`.'
     
     assert the_address
-
+    
     bcc = EthereumBlockchain(the_address = the_address)
-    bcc.start_background_thread(start_in_foreground = (mode != 'web'),
-                                terminate_on_exception = (mode != 'web'),
-                                )
     
     sdb = StateManager(bcc)
-        
+
     ## Must be created prior to forking, for the shared in-memory DBs:    
-    cccoin = CCCoinCore(state_manager = sdb,
+    cccoin = CCCoinCore(sdb = sdb,
+                        bcc = bcc,
                         settings_rewards = CORE_SETTINGS,
                         mode = mode,
                         mediachain_api_url = MC_API_URL,
                         )
-
+    
+    sdb.start_background_thread(start_in_foreground = (mode != 'web'),
+                                terminate_on_exception = (mode != 'web'),
+                                )
     if mode == 'web':
         inner_start_web(cccoin,
                         image_proxy_path = IMAGE_PROXY_PATH,
